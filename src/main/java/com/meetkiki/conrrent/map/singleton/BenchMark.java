@@ -8,49 +8,25 @@ public class BenchMark {
 
 
     public static void main(String[] args) {
-
-        int threadSize = 100;
-        int count = 200;
-
-        System.out.println(" runCasSingleton  ");
-        runCasSingleton(threadSize,count);
+        int threadSize = 200;
+        int count = 10000;
 
         System.out.println(" runSingleton  ");
-        runSingleton(threadSize,count);
+        runSingleton(threadSize, count, Singleton::getInstance);
+
+        System.out.println(" runCasSingleton  ");
+        runSingleton(threadSize, count, CasSingleton::getInstance);
 
         System.out.println(" runAtomicReferenceSingleton  ");
-        runAtomicReferenceSingleton(threadSize,count);
+        runSingleton(threadSize, count, AtomicReferenceSingleton::getInstance);
     }
 
-    private static void runAtomicReferenceSingleton(int threadSize, int count) {
+
+    private static void runSingleton(int threadSize, int count, Callable<AbstractSingleton> callable) {
         long start = System.currentTimeMillis();
 
         for (int i = 0; i < count; i++) {
-            executeOnce(threadSize, CasSingleton::getInstance);
-        }
-
-        long end = System.currentTimeMillis();
-
-        System.out.println("cost ms " + (end - start));
-    }
-
-    private static void runCasSingleton(int threadSize, int count) {
-        long start = System.currentTimeMillis();
-
-        for (int i = 0; i < count; i++) {
-            executeOnce(threadSize, CasSingleton::getInstance);
-        }
-
-        long end = System.currentTimeMillis();
-
-        System.out.println("cost ms " + (end - start));
-    }
-
-    private static void runSingleton(int threadSize, int count) {
-        long start = System.currentTimeMillis();
-
-        for (int i = 0; i < count; i++) {
-            executeOnce(threadSize, Singleton::getInstance);
+            executeOnce(threadSize, callable);
         }
 
         long end = System.currentTimeMillis();

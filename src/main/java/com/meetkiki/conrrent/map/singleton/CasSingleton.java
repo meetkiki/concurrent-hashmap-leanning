@@ -8,13 +8,12 @@ public class CasSingleton extends AbstractSingleton {
 
     private String name;
 
-    public static final int INSTANTIATING = 1;
     public static final int FINISH = 2;
 
     // 未初始化0 实例化中 1 实例化完成 2
     private static volatile int init = 0;
 
-    private static CasSingleton INSTANCE;
+    private static volatile CasSingleton INSTANCE;
 
     private CasSingleton() {
         this.name = "cas instance name";
@@ -23,21 +22,19 @@ public class CasSingleton extends AbstractSingleton {
     public static CasSingleton getInstance() {
         if (INSTANCE == null) {
             for (; ; ) {
-                if (init == FINISH) {
-                    return INSTANCE;
-                } else if (init == INSTANTIATING) {
-                    Thread.yield();
-                } else {
-                    if (U.compareAndSwapInt(CasSingleton.class, SIZE_INIT, 0, 1)) {
-                        try {
-                            if (INSTANCE == null) {
-                                INSTANCE = new CasSingleton();
-                            }
-                            break;
-                        } finally {
-                            init = FINISH;
+                if (U.compareAndSwapInt(CasSingleton.class, SIZE_INIT, 0, 1)) {
+                    try {
+                        if (INSTANCE == null) {
+                            INSTANCE = new CasSingleton();
                         }
+                        break;
+                    } finally {
+                        init = FINISH;
                     }
+                } else if (init == FINISH){
+                    return INSTANCE;
+                } else {
+                    Thread.yield();
                 }
             }
         }

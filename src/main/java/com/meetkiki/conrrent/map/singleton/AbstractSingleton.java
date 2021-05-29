@@ -10,6 +10,10 @@ import java.util.concurrent.Future;
 
 public abstract class AbstractSingleton {
 
+    AbstractSingleton(){
+    }
+
+
     public static int THREAD_SIZE = 1000;
 
     public static ExecutorService executorService = Executors.newFixedThreadPool(THREAD_SIZE);

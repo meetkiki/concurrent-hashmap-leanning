@@ -8,25 +8,37 @@ public class BenchMark {
 
 
     public static void main(String[] args) {
-        int threadSize = 200;
+        int threadTask = 1000;
         int count = 10000;
 
+        AbstractSingleton.executorService.prestartAllCoreThreads();
+
+        sleep();
+
         System.out.println(" runSingleton  ");
-        runSingleton(threadSize, count, Singleton::getInstance);
+        runSingleton(threadTask, count, Singleton::getInstance);
 
         System.out.println(" runCasSingleton  ");
-        runSingleton(threadSize, count, CasSingleton::getInstance);
+        runSingleton(threadTask, count, CasSingleton::getInstance);
 
         System.out.println(" runAtomicReferenceSingleton  ");
-        runSingleton(threadSize, count, AtomicReferenceSingleton::getInstance);
+        runSingleton(threadTask, count, AtomicReferenceSingleton::getInstance);
+    }
+
+    private static void sleep() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
 
-    private static void runSingleton(int threadSize, int count, Callable<AbstractSingleton> callable) {
+    private static void runSingleton(int threadTask, int count, Callable<AbstractSingleton> callable) {
         long start = System.currentTimeMillis();
 
         for (int i = 0; i < count; i++) {
-            executeOnce(threadSize, callable);
+            executeOnce(threadTask, callable);
         }
 
         long end = System.currentTimeMillis();
@@ -35,8 +47,8 @@ public class BenchMark {
     }
 
 
-    public static void executeOnce(int threadSize, Callable<AbstractSingleton> runnable) {
-        for (int i = 0; i < threadSize; i++) {
+    public static void executeOnce(int threadTask, Callable<AbstractSingleton> runnable) {
+        for (int i = 0; i < threadTask; i++) {
             AbstractSingleton.FUTURES.add(AbstractSingleton.executorService.submit(runnable));
         }
 

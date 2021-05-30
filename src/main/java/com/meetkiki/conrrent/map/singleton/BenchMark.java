@@ -24,12 +24,12 @@ public class BenchMark {
          * threadTask   1000
          * count        10000
          *
-         *  runSingleton
-         * cost ms 4457
+         *  runDoubleCheckSingleton
+         * cost ms 4514
          *  runCasSingleton
-         * cost ms 4032
+         * cost ms 3730
          *  runAtomicReferenceSingleton
-         * cost ms 4142
+         * cost ms 3810
          *
          *  理论上来说 cas方式无锁竞争效率应该比有锁更高的，不会造成锁等待
          *      但实际上单例在构造时只会初始化一次，不会重复执行线程冲突的逻辑，

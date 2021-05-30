@@ -2500,26 +2500,41 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         int n = tab.length, stride;
         /**
          * 这里在计算每个线程需要执行的桶个数，下面简称为bound区间
+         *  NCPU 是cpu的虚拟核心数 如果8c16t那么就是16
          *
+         *  如果 NCPU > 1 则每个bound区间的个数为  (n >>> 3) / NCPU  否则为n 就是不拆分
+         *   如果算出的bound区间太小 那么就使用 MIN_TRANSFER_STRIDE 默认是16
          */
         if ((stride = (NCPU > 1) ? (n >>> 3) / NCPU : n) < MIN_TRANSFER_STRIDE)
             stride = MIN_TRANSFER_STRIDE; // subdivide range
+        // 这个nextTab是传入的 在外判断为第一个线程扩容时 为null
         if (nextTab == null) {            // initiating
             try {
+                // 扩容的数组为2倍长度 设置给nextTab
                 @SuppressWarnings("unchecked")
                 Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n << 1];
                 nextTab = nt;
             } catch (Throwable ex) {      // try to cope with OOME
+                // 到这里说明异常了 除了受检异常还有OOM异常，此时放弃扩容，并将sizeCtl设置为最大值
                 sizeCtl = Integer.MAX_VALUE;
                 return;
             }
+            // nextTable是一个 volatile修饰的 节点 ，代表扩容后的哈希表
             nextTable = nextTab;
+            // transferIndex 设置的值为原数组长度
             transferIndex = n;
         }
+        // nextn 存储了新数组的长度
         int nextn = nextTab.length;
+        /**
+         * 这里第一次看到ForwardingNode 节点 他的Hash值为MOVED -1
+         *  并且存储了新哈希表的引用
+         */
         ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);
+        // 这里声明了 两个变量  advance当前bound区间迁移是否完成 和 所有bound区间是否迁移完成
         boolean advance = true;
         boolean finishing = false; // to ensure sweep before committing nextTab
+        // 这里是一个死循环 i表示桶的位置，bound是当前线程区间
         for (int i = 0, bound = 0;;) {
             Node<K,V> f; int fh;
             while (advance) {

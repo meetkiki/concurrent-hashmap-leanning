@@ -30,6 +30,11 @@ public class BenchMark {
          * cost ms 4032
          *  runAtomicReferenceSingleton
          * cost ms 4142
+         *
+         *  理论上来说 cas方式无锁竞争效率应该比有锁更高的，不会造成锁等待
+         *      但实际上单例在构造时只会初始化一次，不会重复执行线程冲突的逻辑，
+  3        *      并且不会有很高的并发，所以使用任何一种形式初始化单例只需要保证线程安全且唯一实例就可以了，
+         *      不要求很高的效率上来说，我更推荐double check单例模式 或者枚举
          */
 
         System.out.println(" runDoubleCheckSingleton  ");

@@ -72,9 +72,9 @@ public class BenchMark {
     }
 
 
-    public static void executeOnce(int threadTask, Callable<AbstractSingleton> runnable) {
+    public static void executeOnce(int threadTask, Callable<AbstractSingleton> callable) {
         for (int i = 0; i < threadTask; i++) {
-            FUTURES.add(executorService.submit(runnable));
+            FUTURES.add(executorService.submit(callable));
         }
 
         for (Future<AbstractSingleton> future : FUTURES) {

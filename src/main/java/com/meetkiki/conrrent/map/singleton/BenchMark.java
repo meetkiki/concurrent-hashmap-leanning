@@ -23,6 +23,8 @@ public class BenchMark {
          * JDK 8u251
          * threadTask   1000
          * count        10000
+         * CPU AMD 4800H 8c16T
+         * 内存 16G
          *
          *  runDoubleCheckSingleton
          * cost ms 4514

@@ -1,8 +1,14 @@
 package com.meetkiki.conrrent.map.singleton;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class BenchMark {
 
@@ -11,12 +17,23 @@ public class BenchMark {
         int threadTask = 1000;
         int count = 10000;
 
-        AbstractSingleton.executorService.prestartAllCoreThreads();
+        executorService.prestartAllCoreThreads();
 
-        sleep();
+        /**
+         * JDK 8u251
+         * threadTask   1000
+         * count        10000
+         *
+         *  runSingleton
+         * cost ms 4457
+         *  runCasSingleton
+         * cost ms 4032
+         *  runAtomicReferenceSingleton
+         * cost ms 4142
+         */
 
-        System.out.println(" runSingleton  ");
-        runSingleton(threadTask, count, Singleton::getInstance);
+        System.out.println(" runDoubleCheckSingleton  ");
+        runSingleton(threadTask, count, DoubleCheckSingleton::getInstance);
 
         System.out.println(" runCasSingleton  ");
         runSingleton(threadTask, count, CasSingleton::getInstance);
@@ -25,13 +42,14 @@ public class BenchMark {
         runSingleton(threadTask, count, AtomicReferenceSingleton::getInstance);
     }
 
-    private static void sleep() {
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
+
+    public static int THREAD_SIZE = 1000;
+
+    public static ThreadPoolExecutor executorService = (ThreadPoolExecutor) Executors.newFixedThreadPool(THREAD_SIZE);
+
+    public static Set<AbstractSingleton> SET = new HashSet<>();
+
+    public static List<Future<AbstractSingleton>> FUTURES = new ArrayList<>();
 
 
     private static void runSingleton(int threadTask, int count, Callable<AbstractSingleton> callable) {
@@ -49,23 +67,26 @@ public class BenchMark {
 
     public static void executeOnce(int threadTask, Callable<AbstractSingleton> runnable) {
         for (int i = 0; i < threadTask; i++) {
-            AbstractSingleton.FUTURES.add(AbstractSingleton.executorService.submit(runnable));
+            FUTURES.add(executorService.submit(runnable));
         }
 
-        for (Future<AbstractSingleton> future : AbstractSingleton.FUTURES) {
+        for (Future<AbstractSingleton> future : FUTURES) {
             try {
-                AbstractSingleton.SET.add(future.get());
+                SET.add(future.get());
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
-        if (AbstractSingleton.SET.size() != 1) {
+        if (SET.size() != 1) {
             throw new RuntimeException("execute error.");
         }
 
-        Optional<AbstractSingleton> first = AbstractSingleton.SET.stream().findFirst();
+        Optional<AbstractSingleton> first = SET.stream().findFirst();
         first.ifPresent(AbstractSingleton::clear);
+
+        SET.clear();
+        FUTURES.clear();
     }
 
 

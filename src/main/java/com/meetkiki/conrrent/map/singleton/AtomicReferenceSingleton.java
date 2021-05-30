@@ -4,6 +4,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class AtomicReferenceSingleton extends AbstractSingleton {
 
+
+    private final String name;
     /**
      * 利用AtomicReference
      */
@@ -13,6 +15,7 @@ public class AtomicReferenceSingleton extends AbstractSingleton {
      * 私有化
      */
     private AtomicReferenceSingleton() {
+        this.name = "atomic instance name";
     }
 
     /**
@@ -37,7 +40,5 @@ public class AtomicReferenceSingleton extends AbstractSingleton {
     @Override
     public void clear() {
         INSTANCE.set(null);
-        SET.clear();
-        FUTURES.clear();
     }
 }

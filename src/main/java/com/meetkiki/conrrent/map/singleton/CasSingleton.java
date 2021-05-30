@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 
 public class CasSingleton extends AbstractSingleton {
 
-    private String name;
+    private final String name;
 
     public static final int FINISH = 2;
 
@@ -44,8 +44,6 @@ public class CasSingleton extends AbstractSingleton {
 
     public void clear() {
         INSTANCE = null;
-        SET.clear();
-        FUTURES.clear();
         U.putIntVolatile(CasSingleton.class, SIZE_INIT, 0);
     }
 

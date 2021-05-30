@@ -1,22 +1,22 @@
 package com.meetkiki.conrrent.map.singleton;
 
 
-public class Singleton extends AbstractSingleton {
+public class DoubleCheckSingleton extends AbstractSingleton {
 
-    private String name;
+    private final String name;
 
     // volatile double 检查单例模式
-    private static volatile Singleton INSTANCE;
+    private static volatile DoubleCheckSingleton INSTANCE;
 
-    private Singleton() {
+    private DoubleCheckSingleton() {
         this.name = "instance name";
     }
 
-    public static Singleton getInstance() {
+    public static DoubleCheckSingleton getInstance() {
         if (INSTANCE == null) {
-            synchronized (Singleton.class) {
+            synchronized (DoubleCheckSingleton.class) {
                 /**
-                 * 如果没有volatile 那么其他 线程改变了INSTANCE的 这个线程也看不到的
+                 * INSTANCE 必须要保证是volatile修饰的
                  * 第一点 保证线程间可见性
                  * 第二点 禁止指令重排序 通常情况下 new 分为三步
                  *	1.申请一块内存，其中成员变量赋默认值
@@ -32,7 +32,7 @@ public class Singleton extends AbstractSingleton {
                  * 所以这里需要加上volatile关键字，禁止指令重排序，从而保证线程安全。
                  */
                 if (INSTANCE == null) {
-                    INSTANCE = new Singleton();
+                    INSTANCE = new DoubleCheckSingleton();
                 }
             }
         }
@@ -42,8 +42,6 @@ public class Singleton extends AbstractSingleton {
 
     public void clear() {
         INSTANCE = null;
-        SET.clear();
-        FUTURES.clear();
     }
 
 }

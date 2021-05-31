@@ -2520,6 +2520,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 return;
             }
             // nextTable是一个 volatile修饰的 节点 ，代表扩容后的哈希表
+            // 小Tip  这里为什么不需要cas的方式为nextTable赋值? nextTab 是外面传入的 在上个方法会判断扩容的状态
             nextTable = nextTab;
             // transferIndex 设置的值为原数组长度
             transferIndex = n;
@@ -2528,7 +2529,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         int nextn = nextTab.length;
         /**
          * 这里第一次看到ForwardingNode 节点 他的Hash值为MOVED -1
-         *  并且存储了新哈希表的引用
+         *  并且存储了新哈希表的引用 只有空桶会用到
          */
         ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);
         // 这里声明了 两个变量  advance当前bound区间迁移是否完成 和 所有bound区间是否迁移完成
@@ -2539,45 +2540,100 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
             Node<K,V> f; int fh;
             while (advance) {
                 int nextIndex, nextBound;
+                /**
+                 * i是桶的下标，从原数组长度减到-1 表示迁移完成一个桶 就下一个
+                 * [bound,transferIndex] 是每个线程的扩容执行区间，transferIndex在第一次进来时会初始化成原数组的长度n
+                 *
+                 * --i >= bound 如果线程刚刚分配完还没干活，那么i就在上面区间内
+                 * finishing 等下说
+                 */
                 if (--i >= bound || finishing)
+                    // 不需要分配
                     advance = false;
+                // transferIndex小于0则代表分配完成
                 else if ((nextIndex = transferIndex) <= 0) {
                     i = -1;
+                    // 不需要分配
                     advance = false;
                 }
+                /**
+                 * nextIndex - stride 就是这个线程区间的下标 nextIndex是当前未分配的位置，stride就是bound区间的大小
+                 * cas 成功 更新transferIndex的值为 nextBound的值
+                 * 如果cas失败 那么就说明其他线程进来了 下次重试
+                 */
                 else if (U.compareAndSwapInt
                         (this, TRANSFERINDEX, nextIndex,
                                 nextBound = (nextIndex > stride ?
                                         nextIndex - stride : 0))) {
+                    // nextBound 就是nextIndex - stride 的值
                     bound = nextBound;
+                    // 索引比长度 小1
                     i = nextIndex - 1;
+                    // 已经分配好 不需要分配
                     advance = false;
                 }
             }
+            /**
+             * 只有分配完成后advance为false 或者 不需要再次分配时  会来到这里
+             *
+             *  i 是索引 小于0代表都迁移完成了
+             *  n 是长度 i 理论上一直在减 是根本不会大于n的 除非Int数据溢出了，即 Integer.MIN_VALUE - 1 = Integer.MAX_VALUE
+             *  上面分配时cas的失败后会不断减小i的值
+             *  i + n >= nextn 说实话 没看懂... nextn是新数组的长度 i + n 和  理论上也不会发生
+             */
             if (i < 0 || i >= n || i + n >= nextn) {
                 int sc;
                 if (finishing) {
+                    // finishing完成时为true  这时更新nextTable为null 将nextTab赋值给table
                     nextTable = null;
                     table = nextTab;
+                    // sizeCtl 的值会再次变为正数，扩容的阈值 为当前旧数组的长度 1.5倍 即新数组的0.75倍
+                    // 可以看出 这里的负载因子 使用的是0.75 不会使用传入的值
                     sizeCtl = (n << 1) - (n >>> 1);
                     return;
                 }
+                /**
+                 * 难以理解的是这里需要进行一次二次检查 TODO
+                 *  从addCount方法可知，扩容线程数存储在sizeCtl的低16位-1上 比如 2个线程 那么sizeCtl的低16位值为3
+                 *  每个线程执行完成后 在这里会做一次 减 1
+                 *  resizeStamp(n) << 16 sizeCtl高16存储其实就是它
+                 *  但只有第一个线程的值 sc 会等于 (rs << RESIZE_STAMP_SHIFT) + 2
+                 *  这里就在验证当前线程是否是第一个线程 如果是 则需要做一次二次检查 如果不是 就退出了
+                 */
                 if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {
                     if ((sc - 2) != resizeStamp(n) << RESIZE_STAMP_SHIFT)
                         return;
+                    // finishing只有这里会设置为 true
                     finishing = advance = true;
+                    // 将i继续设置为原数组长度，重新跑一边全部的桶 如果没有做完就继续
                     i = n; // recheck before commit
                 }
             }
+            /**
+             *  如果原数组 桶上这个位置没有值 说明不需要迁移 直接赋值ForwardingNode
+             *   赋值这个就是一个标志，如果是MOVE的，那么其他线程在put时就不会操作了
+             *   就会进到helpTransfer方法中帮助扩容
+             */
             else if ((f = tabAt(tab, i)) == null)
                 advance = casTabAt(tab, i, null, fwd);
             else if ((fh = f.hash) == MOVED)
+                // 如果检测到这个位置已经有其他线程在迁移了 那么跳出循环重新分配
                 advance = true; // already processed
             else {
+                /**
+                 * 这里和putVal一样 锁住了桶的第一个节点 以防止其他线程操作
+                 *  上面分配和扩容实际上是一个循环，如果其他线程分配失败 也会到这里来
+                 */
                 synchronized (f) {
+                    // 锁中double check 是一个好习惯
                     if (tabAt(tab, i) == f) {
                         Node<K,V> ln, hn;
+                        // fh 在putVal方法中已经有说 如果大于0说明是普通链表Node节点
                         if (fh >= 0) {
+                            /**
+                             * fh 与 n 求与 这里的n是原数组的长度 2的幂 除了最高位都是0
+                             * 那么runBit 这个值 可以
+                             */
                             int runBit = fh & n;
                             Node<K,V> lastRun = f;
                             for (Node<K,V> p = f.next; p != null; p = p.next) {
@@ -2605,9 +2661,14 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                             setTabAt(nextTab, i, ln);
                             setTabAt(nextTab, i + n, hn);
                             setTabAt(tab, i, fwd);
+                            /**
+                             * 将advance设置为true 就会再次进入上面分配方法中 --i >= bound 判断是否分配完成
+                             *  如果没有分配完成 会继续下一个桶
+                             */
                             advance = true;
                         }
                         else if (f instanceof TreeBin) {
+                            // 红黑树节点 折叠
                             TreeBin<K,V> t = (TreeBin<K,V>)f;
                             TreeNode<K,V> lo = null, loTail = null;
                             TreeNode<K,V> hi = null, hiTail = null;

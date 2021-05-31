@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentMap;
 public class SpringContext {
 
     // 此处方便模拟扩容 设置容量参数为32
-    private static final int INITIAL_CAPACITY = 64;
+    private static final int INITIAL_CAPACITY = 32;
     private static final String PRO_ENV = "pro";
     private final ConcurrentMap<Object, Object> store = new ConcurrentHashMap<>(INITIAL_CAPACITY);
     // 模拟 Environment 环境配置本地缓存

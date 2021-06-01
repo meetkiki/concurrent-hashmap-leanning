@@ -2634,10 +2634,23 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                              * fh 与 n 求与 这里的n是原数组的长度 2的幂 除了最高位都是0
                              * 那么runBit 这个值是头节点与数组长度 取与 结果就是数组长度二进制最高位位置的值
                              * 如果是0 则代表桶的头节点f 扩容后仍然在原位置i 如果为1 则为 i + n 的位置
+                             * runBit 这个值只可能 == n 或者为0
                              */
                             int runBit = fh & n;
                             // 第一个桶节点
                             Node<K,V> lastRun = f;
+                            /**
+                             * 这段代码需要倒着看  if (b != runBit) {  runBit = b } 这个判断是将循环到最新的哈希值赋值给runBit
+                             *  而上面知道 p.hash & 得到的值只可能是 n 或者 0 简单说就是不是高位就是低位
+                             *  是在检查倒数X个相同节点到头结点 是否同是高位 或者低位
+                             * 举个栗子 假如链表算出来 依次是
+                             *  节点 A B C D E F
+                             *  哈希 n 0 0 n n n
+                             *  那么 lastRun 就是 D节点，runBit就是n了
+                             *
+                             *  这样做有什么好处呢？HashMap中 是全部都与长度n计算了一遍最高位，但是如果全是高位或者低位
+                             *  其实这里就不需要在进行计算了 直接将头结点赋值给对应的位置即可 ConcurrentHashMap这里就是一个优化检查
+                             */
                             for (Node<K,V> p = f.next; p != null; p = p.next) {
                                 int b = p.hash & n;
                                 if (b != runBit) {
@@ -2645,23 +2658,44 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                     lastRun = p;
                                 }
                             }
+                            // 如果最后一个变动的节点是0 那么 全都放入低位 为下面尾插法做准备
                             if (runBit == 0) {
                                 ln = lastRun;
                                 hn = null;
                             }
+                            // 如果最后一个变动的节点是1 那么 全都放入高位 为下面尾插法做准备
                             else {
                                 hn = lastRun;
                                 ln = null;
                             }
+                            /**
+                             * 这里就开始尾插法的逻辑了 从头开始遍历 结束节点为lastRun
+                             */
                             for (Node<K,V> p = f; p != lastRun; p = p.next) {
                                 int ph = p.hash; K pk = p.key; V pv = p.val;
+                                /**
+                                 * 这里和上面计算逻辑一致 如果数组长度二进制最高位的值为1
+                                 *  头插法放入高位链表，如果是0放入低位链表
+                                 *  这里头插法的区别就是插入到前面，next的值为 上一次循环 链表的头
+                                 * 这样也说明了 ConcurrentHashMap的链表迁移是非稳定算法
+                                 * 不是正序也不是逆序
+                                 */
                                 if ((ph & n) == 0)
                                     ln = new Node<K,V>(ph, pk, pv, ln);
                                 else
                                     hn = new Node<K,V>(ph, pk, pv, hn);
                             }
+                            /**
+                             * 走过上面的逻辑 我们已经拆分了两个链表 ln低位链表 hn高位链表
+                             *  将低位链表ln放在新哈希表的i 位置
+                             *  将高位链表hn放在新哈希表的i + n 位置
+                             */
                             setTabAt(nextTab, i, ln);
                             setTabAt(nextTab, i + n, hn);
+                            /**
+                             * 旧数组的i位置已经迁移完毕，这时候需要设置此处为ForwardingNode节点
+                             * 意思是不能在这个位置put元素了，别的线程也不会进来处理
+                             */
                             setTabAt(tab, i, fwd);
                             /**
                              * 将advance设置为true 就会再次进入上面分配方法中 --i >= bound 判断是否分配完成

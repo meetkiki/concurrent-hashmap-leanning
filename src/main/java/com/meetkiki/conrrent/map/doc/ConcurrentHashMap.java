@@ -2632,9 +2632,11 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         if (fh >= 0) {
                             /**
                              * fh 与 n 求与 这里的n是原数组的长度 2的幂 除了最高位都是0
-                             * 那么runBit 这个值 可以
+                             * 那么runBit 这个值是头节点与数组长度 取与 结果就是数组长度二进制最高位位置的值
+                             * 如果是0 则代表桶的头节点f 扩容后仍然在原位置i 如果为1 则为 i + n 的位置
                              */
                             int runBit = fh & n;
+                            // 第一个桶节点
                             Node<K,V> lastRun = f;
                             for (Node<K,V> p = f.next; p != null; p = p.next) {
                                 int b = p.hash & n;

@@ -1668,6 +1668,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      *         in which case the mapping is left unestablished
      */
     public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction) {
+        // 这里 mappingFunction 和key都不能为null
         if (key == null || mappingFunction == null)
             throw new NullPointerException();
         int h = spread(key.hashCode());
@@ -1678,12 +1679,25 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
             if (tab == null || (n = tab.length) == 0)
                 tab = initTable();
             else if ((f = tabAt(tab, i = (n - 1) & h)) == null) {
+                /**
+                 * 在上面哈希方法文中可以知道 Hash值除了正数 负数有三种类型，其中RESERVED -3 代表预留节点
+                 *  ReservationNode 在初始化的时候会设置hash值为RESERVED
+                 * 这里假定mappingFunction 是一个耗时操作，只会允许一个线程计算，这里在计算之前标记此位置是一个预留节点
+                 *  所以ReservationNode只是一个占位符，在操作冲突时会阻塞其他线程插入节点
+                 *  在加锁之后 会使用casTabAt 的方式操作 设置此处为预留节点 如果失败就说明有其他线程竞争成功去计算了，退出循环重试
+                 */
                 Node<K,V> r = new ReservationNode<K,V>();
                 synchronized (r) {
+                    // 使用cas的方式设置预留节点 synchronized 代码块一般会带一个double check
                     if (casTabAt(tab, i, null, r)) {
+                        // 这里binCount只是一个标志，如果cas成功 才为1 如果失败需要在外层循环重试
                         binCount = 1;
                         Node<K,V> node = null;
                         try {
+                            /**
+                             * 调用 mappingFunction.apply 计算value 如果不为空则会创建新的节点并赋值给node
+                             *  最后在finally中更新 tab中i的值为node 如果计算的值为null那么不会更新总数
+                             */
                             if ((val = mappingFunction.apply(key)) != null)
                                 node = new Node<K,V>(h, key, val, null);
                         } finally {
@@ -1698,6 +1712,10 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 tab = helpTransfer(tab, f);
             else {
                 boolean added = false;
+                /**
+                 * 假如 在计算节点ReservationNode 此时发生其他线程进来操作
+                 *  那么 这里的锁的和上面ReservationNode节点是同一把锁
+                 */
                 synchronized (f) {
                     if (tabAt(tab, i) == f) {
                         if (fh >= 0) {
@@ -1712,6 +1730,10 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                 }
                                 Node<K,V> pred = e;
                                 if ((e = e.next) == null) {
+                                    /**
+                                     * 与putVal方法类似 找到最后一个节点 并且计算这个值 如果不为空则将next设置为新节点
+                                     *  added会作为是否成功新建节点的判断条件
+                                     */
                                     if ((val = mappingFunction.apply(key)) != null) {
                                         added = true;
                                         pred.next = new Node<K,V>(h, key, val, null);
@@ -1727,6 +1749,10 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                             if ((r = t.root) != null &&
                                     (p = r.findTreeNode(h, key, null)) != null)
                                 val = p.val;
+                            /**
+                             * 与putVal方法类似 找到最后一个节点 并且计算这个值 如果不为空则将next设置为新节点
+                             *  added会作为是否成功新建节点的判断条件
+                             */
                             else if ((val = mappingFunction.apply(key)) != null) {
                                 added = true;
                                 t.putTreeVal(h, key, val);
@@ -1737,12 +1763,18 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 if (binCount != 0) {
                     if (binCount >= TREEIFY_THRESHOLD)
                         treeifyBin(tab, i);
+                    // 如果未新增 则说明已经存在相同key的值 直接返回即可
                     if (!added)
                         return val;
                     break;
                 }
             }
         }
+        /**
+         *  这个val会作为新增的判断条件 mappingFunction会将计算的值赋值给val
+         *    val = mappingFunction.apply(key)
+         *   只会在不为空时新增计数器数量
+         */
         if (val != null)
             addCount(1L, binCount);
         return val;
@@ -2563,8 +2595,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                  */
                 else if (U.compareAndSwapInt
                         (this, TRANSFERINDEX, nextIndex,
-                                nextBound = (nextIndex > stride ?
-                                        nextIndex - stride : 0))) {
+                                nextBound = (nextIndex > stride ? nextIndex - stride : 0))) {
                     // nextBound 就是nextIndex - stride 的值
                     bound = nextBound;
                     // 索引比长度 小1

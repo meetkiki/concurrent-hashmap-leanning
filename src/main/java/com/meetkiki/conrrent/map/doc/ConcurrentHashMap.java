@@ -2484,10 +2484,21 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * @param size number of elements (doesn't need to be perfectly accurate)
      */
     private final void tryPresize(int size) {
+        /**
+         * 判断传入的size 是否到最大长度，如果是则取最大值
+         *  否则按照 扩容阈值 的方式计算它的最小2次幂
+         *  即和构造函数一样 n >= 1.5 * size + 1
+         */
         int c = (size >= (MAXIMUM_CAPACITY >>> 1)) ? MAXIMUM_CAPACITY :
                 tableSizeFor(size + (size >>> 1) + 1);
         int sc;
+        // 注意这里是一个死循环
         while ((sc = sizeCtl) >= 0) {
+            /**
+             * 下面的判断和初始化table 逻辑类似 初始化，将sc更新为sizeCtl -1 表示正在初始化
+             *  这里有一个不起眼的判断 n = (sc > c) ? sc : c 实际上就是取数组长度的最大值
+             *   如果putAll方法传入的哈希表过小 这里是不能按照传入的来初始化table的
+             */
             Node<K,V>[] tab = table; int n;
             if (tab == null || (n = tab.length) == 0) {
                 n = (sc > c) ? sc : c;
@@ -2500,20 +2511,35 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                             sc = n - (n >>> 2);
                         }
                     } finally {
+                        // sc就是扩容的阈值，sizeCtl在不操作是存储的下次扩容的阈值
                         sizeCtl = sc;
                     }
                 }
             }
+            /**
+             * 如果c小于sc 说明已经初始化且大小合适 不需要扩容 直接结束了
+             *  比如 传入的size是 32 经过tableSizeFor方法后是64
+             *  但实际上此时的sc可能其他线程操作了扩容 已经是96了 那么此时就不需要再继续扩容了
+             */
             else if (c <= sc || n >= MAXIMUM_CAPACITY)
                 break;
+            /**
+             * 排除上面两个判断，这里只可能是sc < c了 代表已经初始化过，但是需要扩容的情况
+             */
             else if (tab == table) {
+                /**
+                 * 这里的逻辑和helpTransfer方法类似 判断当前的 sc 是否小于0 如果小于0说明其他线程正在扩容 此线程可以尝试去帮忙
+                 *  如果sc 大于0 此线程 尝试 抢占第一个扩容线程 如果成功后 会将sizeCtl 设置为(rs << RESIZE_STAMP_SHIFT) + 2
+                 */
                 int rs = resizeStamp(n);
                 if (sc < 0) {
                     Node<K,V>[] nt;
+                    //  这里的判断条件和helpTransfer一致 就不再赘述
                     if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
                             sc == rs + MAX_RESIZERS || (nt = nextTable) == null ||
                             transferIndex <= 0)
                         break;
+                    // 如果可以帮助扩容，那么将sizeCtl的低16位+1 即扩容线程数 +1
                     if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1))
                         transfer(tab, nt);
                 }

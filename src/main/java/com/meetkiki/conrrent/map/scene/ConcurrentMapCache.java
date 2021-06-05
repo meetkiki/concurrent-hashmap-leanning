@@ -13,6 +13,39 @@ public class ConcurrentMapCache {
     private final boolean allowNullValues;
     private final ConcurrentMap<Object, Object> store;
 
+    @SuppressWarnings("unchecked")
+    public <T> T get(Object key, Callable<T> valueLoader) {
+        Object storeValue = this.store.computeIfAbsent(key, k -> {
+            try {
+                T userValue = valueLoader.call();
+                if (userValue == null) {
+                    if (this.allowNullValues) {
+                        return NullValue.INSTANCE;
+                    }
+                    throw new IllegalArgumentException("Cache '" + getName() + "' is configured to not allow null values but null was provided");
+                }
+                return userValue;
+            } catch (Throwable ex) {
+                throw new RuntimeException();
+            }
+        });
+        if (this.allowNullValues && storeValue == NullValue.INSTANCE) {
+            return null;
+        }
+        return (T) storeValue;
+    }
+
+    public void put(Object key, @Nullable Object value) {
+        if (value == null) {
+            if (this.allowNullValues) {
+                value = NullValue.INSTANCE;
+            } else {
+                throw new IllegalArgumentException("Cache '" + getName() + "' is configured to not allow null values but null was provided");
+            }
+        }
+        this.store.put(key, value);
+    }
+
     protected ConcurrentMapCache(String name, ConcurrentMap<Object, Object> store,
                                  boolean allowNullValues) {
         Assert.notNull(name, "Name must not be null");
@@ -22,49 +55,6 @@ public class ConcurrentMapCache {
         this.allowNullValues = allowNullValues;
     }
 
-    @SuppressWarnings("unchecked")
-    @Nullable
-    public <T> T get(Object key, Callable<T> valueLoader) {
-        return (T) fromStoreValue(this.store.computeIfAbsent(key, k -> {
-            try {
-                return toStoreValue(valueLoader.call());
-            } catch (Throwable ex) {
-                throw new RuntimeException();
-            }
-        }));
-    }
-
-    public void put(Object key, @Nullable Object value) {
-        this.store.put(key, toStoreValue(value));
-    }
-
-
-    protected Object toStoreValue(@Nullable Object userValue) {
-        return superToStoreValue(userValue);
-    }
-
-    protected Object fromStoreValue(@Nullable Object storeValue) {
-        return superFromStoreValue(storeValue);
-    }
-
-    @Nullable
-    protected Object superFromStoreValue(@Nullable Object storeValue) {
-        if (this.allowNullValues && storeValue == NullValue.INSTANCE) {
-            return null;
-        }
-        return storeValue;
-    }
-
-    protected Object superToStoreValue(@Nullable Object userValue) {
-        if (userValue == null) {
-            if (this.allowNullValues) {
-                return NullValue.INSTANCE;
-            }
-            throw new IllegalArgumentException(
-                    "Cache '" + getName() + "' is configured to not allow null values but null was provided");
-        }
-        return userValue;
-    }
 
     public final String getName() {
         return this.name;

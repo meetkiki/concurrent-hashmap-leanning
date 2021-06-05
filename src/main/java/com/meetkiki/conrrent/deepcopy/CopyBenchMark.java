@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-public class BenchMark {
+public class CopyBenchMark {
 
     private static List<Person> persons = new ArrayList<>();
     private static List<Object> rubbish = new ArrayList<>();
@@ -35,7 +35,7 @@ public class BenchMark {
     }
 
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         initData();
 
         System.out.println("persons size = " + persons.size() + " === ");
@@ -59,7 +59,6 @@ public class BenchMark {
         rubbish.add(data3); // NOT GC
 
         System.out.println("MAPPER copy end  ======= \n");
-
     }
 
     private static Object executeOnce(Function<List<Person>, Object> call) {

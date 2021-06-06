@@ -1,18 +1,18 @@
 package com.meetkiki.conrrent.cacheline;
 
-import sun.misc.Contended;
+public class CacheLinePaddingAfter {
 
-public class CacheLinePaddingBefore {
+    public static final int COUNT = 1000_0000;
 
-    public static final int COUNT = 1_0000_0000;
+    // 定义7个long类型变量，进行缓存行填充
+    private static class Padding{
+        public volatile long p1, p2, p3, p4, p5, p6, p7;
+    }
 
-    /**
-     * 此注解有一个前提，必须开启JVM参数-XX:-RestrictContended，此注解才会生效
-     *  可以发现注释后效率比注释前效率低了3倍左右 本质上是空间换时间的思想
-     */
-    @Contended
-    private static class Entity {
-        public volatile long x = 1L;
+    private static class Entity extends Padding{
+        // 使用@sun.misc.Contended注解，必须添加此参数：-XX:-RestrictContended
+        // @sun.misc.Contended
+        public volatile long x = 0L;
     }
 
     public static Entity[] arr = new Entity[2];
@@ -25,13 +25,13 @@ public class CacheLinePaddingBefore {
     public static void main(String[] args) throws InterruptedException {
 
         Thread threadA = new Thread(() -> {
-            for (long i = 0; i < COUNT; i++) {
+            for (int i = 0; i < COUNT; i++) {
                 arr[0].x = i;
             }
         }, "ThreadA");
 
         Thread threadB = new Thread(() -> {
-            for (long i = 0; i < COUNT; i++) {
+            for (int i = 0; i < COUNT; i++) {
                 arr[1].x = i;
             }
         }, "ThreadB");
@@ -42,7 +42,7 @@ public class CacheLinePaddingBefore {
         threadA.join();
         threadB.join();
         final long end = System.nanoTime();
-        System.out.println("耗时：" + (end - start) / 100_0000);
+        System.out.println("耗时：" + (end - start)/100_0000);
 
     }
 }

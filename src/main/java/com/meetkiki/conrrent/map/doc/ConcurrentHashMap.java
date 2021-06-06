@@ -38,6 +38,8 @@ import sun.misc.Unsafe;
 import java.io.ObjectStreamField;
 import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.AbstractMap;
@@ -52,6 +54,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.Spliterator;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountedCompleter;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
@@ -2351,19 +2354,42 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      */
     private final void addCount(long x, int check) {
         CounterCell[] as; long b, s;
+        /**
+         * baseCount 使用来计数的volatile 变量
+         *  假如使用cas更新成功 就说明没有其他线程竞争，这里就直接结束了
+         *   假如更新失败，则说明有其他线程竞争了，则这里在if逻辑中使用CounterCell记录数目
+         */
         if ((as = counterCells) != null ||
                 !U.compareAndSwapLong(this, BASECOUNT, b = baseCount, s = b + x)) {
             CounterCell a; long v; int m;
             boolean uncontended = true;
+            /**
+             * 这里会判断 CounterCell 数组为空
+             *  ThreadLocalRandom.getProbe() 方法 是获取当前线程的唯一随机数 m 是长度-1
+             *  取与计算就是求模 可以找到在counterCells中对应线程的哈希槽位置
+             * 如果为空 说明没有初始化
+             * 如果不为空，则在自增counterCells 数组对应的哈希槽位置自增，如果自增成功则返回
+             *  如果自增失败 说明多线程竞争，就会统一进到fullAddCount方法中，以此来完成+1的操作
+             * uncontended 是标记是否发生了竞争
+             */
             if (as == null || (m = as.length - 1) < 0 ||
-                    (a = as[ThreadLocalRandom.getProbe() & m]) == null ||
+                    (a = as[ThreadLocalRandomGetProbe() & m]) == null ||
                     !(uncontended =
                             U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))) {
+                // 在fullAddCount方法中会完成最终的计数工作
                 fullAddCount(x, uncontended);
+                /**
+                 * 这里 自增计数后，直接返回了 没有去判断是否扩容
+                 *  个人理解 这里因为是高并发场景 直接返回 保证效率 不再去扩容
+                 */
                 return;
             }
+            /**
+             * 这里的小于0说明是清除元素 不需要进行扩容 直接返回
+             */
             if (check <= 1)
                 return;
+            // 否则重新计算计数
             s = sumCount();
         }
         // check不是负数, 就帮助扩容, 在clear 方法中会设置为 -1
@@ -2426,6 +2452,40 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 // 重新计算下总数，下次循环判断是否需要扩容
                 s = sumCount();
             }
+        }
+    }
+
+
+    public static int ThreadLocalRandomGetProbe(){
+        try {
+            Class<ThreadLocalRandom> clazz = ThreadLocalRandom.class;
+            Method getProbe = clazz.getDeclaredMethod("getProbe");
+            getProbe.setAccessible(true);
+            return (int) getProbe.invoke(null);
+        } catch (Exception e) {
+            throw new RuntimeException("execute error. ", e);
+        }
+    }
+
+    public static void ThreadLocalRandomLocalInit(){
+        try {
+            Class<ThreadLocalRandom> clazz = ThreadLocalRandom.class;
+            Method localInit = clazz.getDeclaredMethod("localInit");
+            localInit.setAccessible(true);
+            localInit.invoke(null);
+        } catch (Exception e) {
+            throw new RuntimeException("execute error. ", e);
+        }
+    }
+
+    public static int ThreadLocalRandomAdvanceProbe(int h){
+        try {
+            Class<ThreadLocalRandom> clazz = ThreadLocalRandom.class;
+            Method localInit = clazz.getDeclaredMethod("advanceProbe", int.class);
+            localInit.setAccessible(true);
+            return (int) localInit.invoke(null, h);
+        } catch (Exception e) {
+            throw new RuntimeException("execute error. ", e);
         }
     }
 
@@ -2828,9 +2888,9 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     // See LongAdder version for explanation
     private final void fullAddCount(long x, boolean wasUncontended) {
         int h;
-        if ((h = ThreadLocalRandom.getProbe()) == 0) {
-            ThreadLocalRandom.localInit();      // force initialization
-            h = ThreadLocalRandom.getProbe();
+        if ((h = ThreadLocalRandomGetProbe()) == 0) {
+            ThreadLocalRandomLocalInit();      // force initialization
+            h = ThreadLocalRandomGetProbe();
             wasUncontended = true;
         }
         boolean collide = false;                // True if last slot nonempty
@@ -2884,7 +2944,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                     collide = false;
                     continue;                   // Retry with expanded table
                 }
-                h = ThreadLocalRandom.advanceProbe(h);
+                h = ThreadLocalRandomAdvanceProbe(h);
             }
             else if (cellsBusy == 0 && counterCells == as &&
                     U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {

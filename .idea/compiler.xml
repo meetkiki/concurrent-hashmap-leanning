@@ -18,6 +18,9 @@
         <module name="concurrent-hashmap-leanning" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="concurrent-learning" target="1.8" />
+    </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">

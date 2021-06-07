@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.LongAdder;
 @BenchmarkMode(Mode.AverageTime)
 public class TestMain {
 
-    private LongAdder longAdder = new LongAdder();
-    private AtomicLong atomicLong = new AtomicLong();
+    private final LongAdder longAdder = new LongAdder();
+    private final AtomicLong atomicLong = new AtomicLong();
 
     public static void main(String[] args) throws RunnerException {
         Options options = new OptionsBuilder().include(TestMain.class.getName()).build();

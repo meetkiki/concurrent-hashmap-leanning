@@ -911,6 +911,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      */
     public int size() {
         long n = sumCount();
+        // 因为是long 防止溢出
         return ((n < 0L) ? 0 :
                 (n > (long)Integer.MAX_VALUE) ? Integer.MAX_VALUE :
                         (int)n);
@@ -936,16 +937,28 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      */
     public V get(Object key) {
         Node<K,V>[] tab; Node<K,V> e, p; int n, eh; K ek;
+        // 这里直接调用了key的hashCode方法计算哈希值，如果key为null时会报空指针异常
         int h = spread(key.hashCode());
+        /**
+         * 因为table是懒加载的，如果为空说明未初始化 直接返回null即可
+         *  如果对应桶位置也为空 说明table中没有值 直接返回
+         */
         if ((tab = table) != null && (n = tab.length) > 0 &&
                 (e = tabAt(tab, (n - 1) & h)) != null) {
+            // 如果根节点就是需要找的值，那么判断hashcode和equals方法相同就会直接返回
             if ((eh = e.hash) == h) {
                 if ((ek = e.key) == key || (ek != null && key.equals(ek)))
                     return e.val;
             }
+            /**
+             * 如果eh小于0 有红黑树节点、扩容中节点ForwardingNode、预留节点ReservationNode
+             *  这里会调用他们各自的find方法
+             */
             else if (eh < 0)
                 return (p = e.find(h, key)) != null ? p.val : null;
+            // 大于0 说明是普通的链表节点
             while ((e = e.next) != null) {
+                // 普通节点就是循环直接查找了
                 if (e.hash == h &&
                         ((ek = e.key) == key || (ek != null && key.equals(ek))))
                     return e.val;
@@ -1133,23 +1146,35 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * non-null.  If resulting value is null, delete.
      */
     final V replaceNode(Object key, V value, Object cv) {
+        // 计算哈希值
         int hash = spread(key.hashCode());
         for (Node<K,V>[] tab = table;;) {
             Node<K,V> f; int n, i, fh;
             if (tab == null || (n = tab.length) == 0 ||
                     (f = tabAt(tab, i = (n - 1) & hash)) == null)
+                // 如果查询不到 就什么都不做 直接返回
                 break;
             else if ((fh = f.hash) == MOVED)
+                // 和putVal方法类似，如果判断当前桶正在迁移 那么就回去帮助迁移
                 tab = helpTransfer(tab, f);
             else {
                 V oldVal = null;
                 boolean validated = false;
+                // 删除也是锁住了头结点 以防止其他线程操作
                 synchronized (f) {
+                    // double check
                     if (tabAt(tab, i) == f) {
                         if (fh >= 0) {
+                            // fh大于0 说明是普通节点
                             validated = true;
                             for (Node<K,V> e = f, pred = null;;) {
                                 K ek;
+                                /**
+                                 * 这里和put方法不同的是，如果查询到了相关的节点
+                                 *  还会需要判断传入的cv是否为空
+                                 *  如果不为空 则需要判断cv的值 传入的cv是否和原值相同，如果相同才
+                                 *  会进行操作
+                                 */
                                 if (e.hash == hash &&
                                         ((ek = e.key) == key ||
                                                 (ek != null && key.equals(ek)))) {
@@ -1157,20 +1182,27 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                     if (cv == null || cv == ev ||
                                             (ev != null && cv.equals(ev))) {
                                         oldVal = ev;
+                                        // 判断如果value不为空才会进行替换
                                         if (value != null)
                                             e.val = value;
+                                        // 否则是进行删除 需要将上一个节点pred 的next更改
+                                        // 即 上一个next 为下一个next的值 不再连接当前节点
                                         else if (pred != null)
                                             pred.next = e.next;
                                         else
+                                            // pred 为空 说明是第一个节点 那么需要更改桶的头结点
                                             setTabAt(tab, i, e.next);
                                     }
+                                    // 如果未找到需要删除的元素相同cv值 那么 就会返回null
                                     break;
                                 }
                                 pred = e;
+                                // 循环下一个节点
                                 if ((e = e.next) == null)
                                     break;
                             }
                         }
+                        // 如果是红黑树节点
                         else if (f instanceof TreeBin) {
                             validated = true;
                             TreeBin<K,V> t = (TreeBin<K,V>)f;
@@ -1190,9 +1222,11 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         }
                     }
                 }
+                // 如果是上面两种节点类型
                 if (validated) {
                     if (oldVal != null) {
                         if (value == null)
+                            // 如果value 为null代表删除 这里需要减计数器的值
                             addCount(-1L, -1);
                         return oldVal;
                     }
@@ -1210,30 +1244,39 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         long delta = 0L; // negative number of deletions
         int i = 0;
         Node<K,V>[] tab = table;
+        // i是桶的索引 从第0个开始
         while (tab != null && i < tab.length) {
             int fh;
+            // 如果头结点为空 那么直接跳过
             Node<K,V> f = tabAt(tab, i);
             if (f == null)
                 ++i;
             else if ((fh = f.hash) == MOVED) {
+                // 如果正在扩容，那么也会去帮助扩容 并且重置i
                 tab = helpTransfer(tab, f);
                 i = 0; // restart
             }
             else {
+                // 加锁
                 synchronized (f) {
+                    // double check
                     if (tabAt(tab, i) == f) {
                         Node<K,V> p = (fh >= 0 ? f :
                                 (f instanceof TreeBin) ?
                                         ((TreeBin<K,V>)f).first : null);
+                        // 这里会遍历所有链表或者红黑树节点，记录delta数量
                         while (p != null) {
                             --delta;
                             p = p.next;
                         }
+                        // 通过直接设置桶的头结点来进行删除，这里会给i自增
                         setTabAt(tab, i++, null);
                     }
                 }
             }
         }
+        // 如果不为空，则需要进行更新计数器的值
+        // check 为-1是不会进行扩容的
         if (delta != 0L)
             addCount(delta, -1);
     }
@@ -2230,25 +2273,47 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         }
 
         Node<K,V> find(int h, Object k) {
+            /**
+             * 寻找ForwardingNode 是在nextTable上面查找的，
+             *  迁移操作时，可能触发下次迁移，所以兼容扩容查找的场景要使用nextTable
+             * 此处需要注意的是：此处使用的是新的nextTable计算桶，可能这个桶还没有迁移
+             *  也是为空的，所以get方法在多线程操作的场景下不是一定准确的
+             *  当然，下次再查询get一次就会有了
+             */
             // loop to avoid arbitrarily deep recursion on forwarding nodes
             outer: for (Node<K,V>[] tab = nextTable;;) {
                 Node<K,V> e; int n;
+                // 如果key为null 或者对应哈希桶也为null 直接返回
                 if (k == null || tab == null || (n = tab.length) == 0 ||
                         (e = tabAt(tab, (n - 1) & h)) == null)
                     return null;
                 for (;;) {
                     int eh; K ek;
+                    /**
+                     * 如果 要查询的就是这个节点 直接返回
+                     */
                     if ((eh = e.hash) == h &&
                             ((ek = e.key) == k || (ek != null && k.equals(ek))))
                         return e;
+                    /**
+                     * 这里会判断 是否是小于0 如果小于0 说明在迁移过程中发生了二次迁移
+                     */
                     if (eh < 0) {
                         if (e instanceof ForwardingNode) {
+                            /**
+                             *  这里是防止在查询时又发生了二次迁移，即查询时不加锁的，每个线程的
+                             *   时间片到了 就会等到其他线程执行，这里在遍历节点时，也会出现其他完成了
+                             *   扩容，进而线程put元素 导致了此时发生二次扩容
+                             */
                             tab = ((ForwardingNode<K,V>)e).nextTable;
+                            // 这里是直接查询新的哈希表
                             continue outer;
                         }
                         else
+                            // 如果是红黑树或者其他节点，就直接执行他们的查询方法
                             return e.find(h, k);
                     }
+                    // 如果不是需要查询的节点，查询下一个节点
                     if ((e = e.next) == null)
                         return null;
                 }
@@ -2874,9 +2939,12 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     }
 
     final long sumCount() {
+        // 注意 这里是一个近似值，如果在计算时，有其他线程进来操作了元素，实际上是不准确的
         CounterCell[] as = counterCells; CounterCell a;
+        // 这里会优先使用baseCount 的值 如果counterCells没有初始化 过 说明没有线程竞争
         long sum = baseCount;
         if (as != null) {
+            // 如果初始化 则把counterCells所有不为空的节点加起来就是总数了
             for (int i = 0; i < as.length; ++i) {
                 if ((a = as[i]) != null)
                     sum += a.value;
@@ -2888,30 +2956,52 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     // See LongAdder version for explanation
     private final void fullAddCount(long x, boolean wasUncontended) {
         int h;
+        /**
+         * ThreadLocalRandom.getProbe == 0说明这个线程还没有初始化过
+         *  则会调用ThreadLocalRandom.localInit进行初始化 拿到对应线程的惟一数
+         */
         if ((h = ThreadLocalRandomGetProbe()) == 0) {
             ThreadLocalRandomLocalInit();      // force initialization
             h = ThreadLocalRandomGetProbe();
             wasUncontended = true;
         }
+        // 记录冲突标志 是否需要扩容 如果为true 则代表需要扩容
         boolean collide = false;                // True if last slot nonempty
+        // 这里是一个死循环
         for (;;) {
             CounterCell[] as; CounterCell a; int n; long v;
+            /**
+             * 这里是在判断cell数组是否发生过初始化，如果初始化 n = as.length 会大于0
+             *  第一次进来 显然没有
+             */
             if ((as = counterCells) != null && (n = as.length) > 0) {
+                /**
+                 * 如果 找到次数的哈希槽为空，那么就新建一个CounterCell
+                 */
                 if ((a = as[(n - 1) & h]) == null) {
+                    // 减小自旋锁的临界区 因为获取volatile 要比 cas的方式快
                     if (cellsBusy == 0) {            // Try to attach new Cell
                         CounterCell r = new CounterCell(x); // Optimistic create
+                        /**
+                         * cellsBusy 是一个锁的标志位，为0说明无锁，1有锁 其他线程正在操作
+                         *  如果为0 则使用cas的方式设置为1
+                         */
                         if (cellsBusy == 0 &&
                                 U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
                             boolean created = false;
                             try {               // Recheck under lock
                                 CounterCell[] rs; int m, j;
+                                // 双重检查
                                 if ((rs = counterCells) != null &&
                                         (m = rs.length) > 0 &&
+                                        // 将新建的counterCell放入对应的哈希槽中
                                         rs[j = (m - 1) & h] == null) {
                                     rs[j] = r;
+                                    // 创建成功
                                     created = true;
                                 }
                             } finally {
+                                // 释放锁
                                 cellsBusy = 0;
                             }
                             if (created)
@@ -2919,49 +3009,89 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                             continue;           // Slot is now non-empty
                         }
                     }
+                    // 到这里说明有其他线程操作 标记不是cas的方式失败的 避免进入扩容逻辑
                     collide = false;
                 }
+                // 说明抢占的位置不为空 且这个值是外面传入的，代表上一次操作操作失败了
                 else if (!wasUncontended)       // CAS already known to fail
+                    // 继续循环
                     wasUncontended = true;      // Continue after rehash
+                // 如果不为空 则使用cas的方式增加对应位置的value值 如果成功则返回
                 else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))
                     break;
+                /**
+                 * 这里n >= NCPU 代表是否是到最大值，NCPU是cpu虚拟核心数
+                 *  counterCells 毕竟不会太大 够用即可
+                 * counterCells != as 说明有其他线程操作 扩容了
+                 */
                 else if (counterCells != as || n >= NCPU)
                     collide = false;            // At max size or stale
+                /**
+                 * 说实话 这里写的挺不让人好理解的，如果上面条件都是false了
+                 *  简单说 给一次尝试的机会，如果下次还是false 即竞争太大，就会进入扩容的逻辑
+                 */
                 else if (!collide)
                     collide = true;
                 else if (cellsBusy == 0 &&
                         U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+                    // 加锁 进入扩容逻辑
                     try {
+                        // double check
                         if (counterCells == as) {// Expand table unless stale
+                            // 大小为当前的两倍
                             CounterCell[] rs = new CounterCell[n << 1];
                             for (int i = 0; i < n; ++i)
                                 rs[i] = as[i];
                             counterCells = rs;
                         }
                     } finally {
+                        // 释放锁
                         cellsBusy = 0;
                     }
+                    // 标记 下次不需要扩容
                     collide = false;
                     continue;                   // Retry with expanded table
                 }
+                // 每次循环都会重新生成新的随机数 毕竟哈希槽是廉价的 不需要查询
                 h = ThreadLocalRandomAdvanceProbe(h);
             }
+            /**
+             * 如果 没有进行初始化，那么标记正在初始化 cellsBusy cas的方式设置为1
+             *  标记正在初始化
+             */
             else if (cellsBusy == 0 && counterCells == as &&
                     U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
                 boolean init = false;
                 try {                           // Initialize table
+                    /**
+                     * double check
+                     *  如果线程竞争多，在A线程刚刚初始化完成后，会将cellsBusy修改为0，此时
+                     *   counterCells已经不为空了，需要二次判断
+                     */
                     if (counterCells == as) {
+                        // 初始化长度为2的数组
                         CounterCell[] rs = new CounterCell[2];
+                        // 如果长度为2 快速求模的方式就是 & 1 了
+                        // 这里直接创建时为counterCell的value赋值
                         rs[h & 1] = new CounterCell(x);
+                        // 本地变量操作完成后才会赋值volatile 变量
                         counterCells = rs;
                         init = true;
                     }
                 } finally {
+                    /**
+                     * 在最后更新cellsBusy 为0标记 初始化 完成
+                     */
                     cellsBusy = 0;
                 }
+                // 如果为创建成功 直接返回
                 if (init)
                     break;
             }
+            /**
+             * 这里就是在抢占 创建 cell数组时失败了 尝试下自旋写入 baseCount
+             *  万一成功了就直接返回
+             */
             else if (U.compareAndSwapLong(this, BASECOUNT, v = baseCount, v + x))
                 break;                          // Fall back on using base
         }

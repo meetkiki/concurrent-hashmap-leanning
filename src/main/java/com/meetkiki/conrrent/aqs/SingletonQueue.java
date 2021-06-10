@@ -20,7 +20,7 @@ public class SingletonQueue<D> implements Queue<D> {
     private int size;
 
 
-    public SingletonQueue(){
+    public SingletonQueue() {
 
     }
 
@@ -28,17 +28,21 @@ public class SingletonQueue<D> implements Queue<D> {
     @Override
     public boolean add(D data) {
         Node<D> node = new Node<>(data);
-        if (head == null){
+        if (head == null) {
             head = node;
+            tail = node;
+        } else {
             node.prev = tail;
+            tail.next = node;
+            tail = node;
         }
-        tail = node;
+        size++;
         return true;
     }
 
     @Override
     public boolean remove(Object o) {
-        if (tail == head){
+        if (tail == head) {
             return false;
         }
 
@@ -82,7 +86,15 @@ public class SingletonQueue<D> implements Queue<D> {
 
     @Override
     public D poll() {
-        return null;
+        if (head == null) {
+            return null;
+        }
+        Node<D> temp = head;
+        head = temp.next;
+        if (head != null) {
+            head.prev = null;
+        }
+        return temp.data;
     }
 
     @Override
@@ -142,22 +154,6 @@ public class SingletonQueue<D> implements Queue<D> {
         public Node(D data) {
             this.data = data;
         }
-    }
-
-    public Node<D> getHead() {
-        return head;
-    }
-
-    public void setHead(Node<D> head) {
-        this.head = head;
-    }
-
-    public Node<D> getTail() {
-        return tail;
-    }
-
-    public void setTail(Node<D> tail) {
-        this.tail = tail;
     }
 
 

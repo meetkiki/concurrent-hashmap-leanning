@@ -21,7 +21,6 @@ public class SingletonQueue<D> implements Queue<D> {
 
 
     public SingletonQueue() {
-
     }
 
 
@@ -30,12 +29,11 @@ public class SingletonQueue<D> implements Queue<D> {
         Node<D> node = new Node<>(data);
         if (head == null) {
             head = node;
-            tail = node;
         } else {
             node.prev = tail;
             tail.next = node;
-            tail = node;
         }
+        tail = node;
         size++;
         return true;
     }
@@ -71,12 +69,13 @@ public class SingletonQueue<D> implements Queue<D> {
 
     @Override
     public void clear() {
-
+        head = tail = null;
+        size = 0;
     }
 
     @Override
     public boolean offer(D d) {
-        return false;
+        return add(d);
     }
 
     @Override
@@ -94,17 +93,18 @@ public class SingletonQueue<D> implements Queue<D> {
         if (head != null) {
             head.prev = null;
         }
+        size--;
         return temp.data;
     }
 
     @Override
     public D element() {
-        return null;
+        return head.data;
     }
 
     @Override
     public D peek() {
-        return null;
+        return head.data;
     }
 
 
@@ -125,17 +125,55 @@ public class SingletonQueue<D> implements Queue<D> {
 
     @Override
     public Iterator<D> iterator() {
-        return null;
+        return new Itr<>(head);
+    }
+
+    static class Itr<D> implements Iterator<D>{
+
+        private Node<D> node;
+
+        public Itr(Node<D> head) {
+            this.node = head;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return node != null;
+        }
+
+        @Override
+        public D next() {
+            Node<D> temp = node;
+            node = temp.next;
+            return temp.data;
+        }
     }
 
     @Override
     public Object[] toArray() {
-        return new Object[0];
+        Object[] result = new Object[size];
+        Node<Object> node = (Node<Object>) head;
+        int i = 0;
+        while (node != null){
+            result[i++] = node.data;
+            node = node.next;
+        }
+        return result;
     }
 
     @Override
     public <T> T[] toArray(T[] a) {
-        return null;
+        if (a.length < size)
+            a = (T[])java.lang.reflect.Array.newInstance(
+                    a.getClass().getComponentType(), size);
+        Object[] result = a;
+        Node<T> node = (Node<T>) head;
+        int i = 0;
+        while (node != null){
+            result[i++] = node.data;
+            node = node.next;
+        }
+        return (T[]) result;
     }
 
 
@@ -150,6 +188,9 @@ public class SingletonQueue<D> implements Queue<D> {
         private Node<D> next;
 
         private D data;
+
+        public Node() {
+        }
 
         public Node(D data) {
             this.data = data;

@@ -27,13 +27,21 @@ public class SingletonQueue<D> implements Queue<D> {
     @Override
     public boolean add(D data) {
         Node<D> node = new Node<>(data);
+        Node<D> prev = tail;
         if (head == null) {
+            // init cas
             head = node;
+
+            // cas
+            tail = node;
         } else {
-            node.prev = tail;
-            tail.next = node;
+            node.prev = prev;
+
+            // cas
+            tail = node;
+
+            prev.next = node;
         }
-        tail = node;
         size++;
         return true;
     }

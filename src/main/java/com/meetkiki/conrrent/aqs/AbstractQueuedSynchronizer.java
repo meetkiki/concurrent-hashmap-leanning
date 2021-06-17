@@ -909,6 +909,10 @@ public abstract class AbstractQueuedSynchronizer
                     failed = false;
                     return interrupted;
                 }
+                /**
+                 * shouldParkAfterFailedAcquire 判断当前节点是否需要阻塞
+                 *
+                 */
                 if (shouldParkAfterFailedAcquire(p, node) &&
                         parkAndCheckInterrupt())
                     interrupted = true;

@@ -223,6 +223,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         private static final long serialVersionUID = -3000897897090466540L;
 
         final void lock() {
+            // acquire 是AQS中的方法 代表申请1个资源
             acquire(1);
         }
 

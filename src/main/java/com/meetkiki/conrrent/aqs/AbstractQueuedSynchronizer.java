@@ -591,12 +591,17 @@ public abstract class AbstractQueuedSynchronizer
             Node t = tail;
             // 如果tail为空 则执行初始化
             if (t == null) { // Must initialize
-                // 双向头节点
+                // 双向链表队列头节点是一个虚节点，不存储数据 head为空代表未初始化
+                // 第一个节点 设置头结点 为一个虚节点 代表初始化
                 if (compareAndSetHead(new Node()))
+                    // tail 指向最后一个节点 head == tail 代表空队列
                     tail = head;
             } else {
+                // 新节点的前置节点为旧的tail节点
                 node.prev = t;
+                // 操作 volatile 修饰的 tail 变量 使用cas方式 更新 为新节点
                 if (compareAndSetTail(t, node)) {
+                    // 前置节点建立连接关系 此处只有一个线程会进来
                     t.next = node;
                     return t;
                 }
@@ -1214,7 +1219,7 @@ public abstract class AbstractQueuedSynchronizer
      */
     public final void acquire(int arg) {
         if (!tryAcquire(arg) &&
-            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+                acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
             selfInterrupt();
     }
 
@@ -1535,6 +1540,9 @@ public abstract class AbstractQueuedSynchronizer
         Node h = head;
         Node s;
         /**
+         * 此方法判断等待队列中是否包含有效节点，返回true则代表队列中包含其他有效节点 需要加入等待队列
+         *  false则说明没有其他节点，当前线程可以直接争取共享资源
+         *
          * h != t 初始化后 head和tail就不会相等  head指向第一个元素 tail是最后一个元素
          *  h.next == null 只会存在于 初始化完成后，第一个元素入队时 但是还未给head的next设置值时
          *

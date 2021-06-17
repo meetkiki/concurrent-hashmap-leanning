@@ -778,11 +778,13 @@ public abstract class AbstractQueuedSynchronizer
      */
     private void cancelAcquire(Node node) {
         // Ignore if node doesn't exist
+        // 跳过无效节点 这个判断不太有意义
         if (node == null)
             return;
 
         node.thread = null;
 
+        // 跳过取消节点
         // Skip cancelled predecessors
         Node pred = node.prev;
         while (pred.waitStatus > 0)
@@ -830,13 +832,18 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if thread should block
      */
     private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
+        // 获取前驱节点的状态
         int ws = pred.waitStatus;
+        // SIGNAL 说明 是唤醒状态
         if (ws == Node.SIGNAL)
             /*
              * This node has already set status asking a release
              * to signal it, so it can safely park.
              */
             return true;
+        /**
+         * ws > 0 只有取消状态 这一段代码实际上是在删除所有取消节点
+         */
         if (ws > 0) {
             /*
              * Predecessor was cancelled. Skip over predecessors and
@@ -852,6 +859,7 @@ public abstract class AbstractQueuedSynchronizer
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.
              */
+            // 设置前驱节点为SIGNAL 在park前设置前驱节点为SIGNAL
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
         return false;
@@ -870,6 +878,7 @@ public abstract class AbstractQueuedSynchronizer
      * @return {@code true} if interrupted
      */
     private final boolean parkAndCheckInterrupt() {
+        // 阻塞当前线程
         LockSupport.park(this);
         return Thread.interrupted();
     }
@@ -911,14 +920,34 @@ public abstract class AbstractQueuedSynchronizer
                 }
                 /**
                  * shouldParkAfterFailedAcquire 判断当前节点是否需要阻塞
+                 *  当前不为头结点 且没有抢到资源时，可能有其他线程抢到了资源，此时需要先判断是否需要阻塞
+                 *   被阻塞条件：前驱节点的 waitStatus为 -1 等待锁
+                 *  waitStatus 有五种状态 ：
+                 *   0 初始化
+                 *   1 CANCELLED 线程获取锁的请求已经取消
+                 *   -2 CONDITION 节点在等待队列中，节点线程等待唤醒
+                 *   -3 PROPAGATE 当前线程处在SHARED情况下，该字段才会使用
+                 *   -1 SIGNAL 线程已经准备好了，就等资源释放了
+                 *  防止无限循环浪费资源
                  *
+                 *  每一个线程进来后，都会设置自己的前一个有效 线程为 SIGNAL状态，第二次循环后尝试失败后，
+                 *   则将自己park 休眠 结束后
                  */
                 if (shouldParkAfterFailedAcquire(p, node) &&
+                        /**
+                         * shouldParkAfterFailedAcquire 为 true 表示 它是需要阻塞的，调用LockSupport.park 阻塞当前线程
+                         *  并且 如果阻塞完成会返回线程是否中断标志位 interrupted
+                         */
                         parkAndCheckInterrupt())
+                    // interrupted 表示线程是否中断过
                     interrupted = true;
             }
         } finally {
             if (failed)
+            /**
+             * 抢占到锁资源后，会将failed设置为false 即非失败
+             *  如果非失败，那么会去执行临界区资源，最后解锁删除头结点
+             */
                 cancelAcquire(node);
         }
     }

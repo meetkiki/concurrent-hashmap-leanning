@@ -35,6 +35,7 @@
 
 package com.meetkiki.conrrent.aqs;
 
+import java.lang.reflect.Field;
 import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -2375,7 +2376,7 @@ public abstract class AbstractQueuedSynchronizer
      * are at it, we do the same for other CASable fields (which could
      * otherwise be done with atomic field updaters).
      */
-    private static final Unsafe unsafe = Unsafe.getUnsafe();
+    private static final Unsafe unsafe;
     private static final long stateOffset;
     private static final long headOffset;
     private static final long tailOffset;
@@ -2384,6 +2385,11 @@ public abstract class AbstractQueuedSynchronizer
 
     static {
         try {
+//            unsafe = Unsafe.getUnsafe();
+            Field field = Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+            unsafe = (Unsafe) field.get(null);
+
             stateOffset = unsafe.objectFieldOffset
                     (AbstractQueuedSynchronizer.class.getDeclaredField("state"));
             headOffset = unsafe.objectFieldOffset

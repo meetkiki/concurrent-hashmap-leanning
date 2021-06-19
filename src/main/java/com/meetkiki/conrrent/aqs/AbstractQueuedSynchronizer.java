@@ -1078,20 +1078,42 @@ public abstract class AbstractQueuedSynchronizer
      */
     private void doAcquireSharedInterruptibly(int arg)
             throws InterruptedException {
+        /**
+         * 调用addWaiter方法将当前线程包装成Node节点
+         *  并加入等待队列的尾部
+         */
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             for (; ; ) {
+                // 拿到前驱结点
                 final Node p = node.predecessor();
+                // 和独占模式类似，如果是头结点说明可以尝试获取资源
                 if (p == head) {
+                    /**
+                     * tryAcquireShared 尝试共享的方式获取资源
+                     *  实际上是 判断总许可数 state是否大于传入的申请许可数
+                     *  如果大于 说明还有资源可以获取，使用CAS的方式更新state的值
+                     *  否则返回负数 表示申请失败
+                     */
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        /**
+                         * setHeadAndPropagate 设置当前节点为head r是剩余的资源
+                         *  如果r > 0 还会继续唤醒其他挂起的线程
+                         */
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         failed = false;
                         return;
                     }
                 }
+                /**
+                 * 同理 这里也是在判断是否需要挂起
+                 *  前驱节点为SIGNAL 说明是一个有效节点 当前线程进入parkAndCheckInterrupt方法等待
+                 *  与独占模式不同的是 这里如果是中断 则会抛出InterruptedException异常
+                 *  使用 Semaphore.acquireShared 方法可以避免异常
+                 */
                 if (shouldParkAfterFailedAcquire(p, node) &&
                         parkAndCheckInterrupt())
                     throw new InterruptedException();

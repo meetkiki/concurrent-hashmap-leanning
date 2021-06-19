@@ -148,6 +148,10 @@ public class ReentrantLock implements Lock, java.io.Serializable {
         }
 
         protected final boolean tryRelease(int releases) {
+            /**
+             * state的值是获取资源的次数 减去需要释放的次数为0说明当前线程不再持有锁
+             *  释放资源之前会判断是否是当前持有资源线程 如果非持有资源线程释放则会跑出异常
+             */
             int c = getState() - releases;
             if (Thread.currentThread() != getExclusiveOwnerThread())
                 throw new IllegalMonitorStateException();
@@ -156,6 +160,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
                 free = true;
                 setExclusiveOwnerThread(null);
             }
+            // 因为独占模式 占有线程只会有一个 所以可以直接更新
             setState(c);
             return free;
         }
@@ -204,12 +209,16 @@ public class ReentrantLock implements Lock, java.io.Serializable {
          * Performs lock.  Try immediate barge, backing up to normal
          * acquire on failure.
          */
-        final void lock() {
-            if (compareAndSetState(0, 1))
-                setExclusiveOwnerThread(Thread.currentThread());
-            else
-                acquire(1);
-        }
+    final void lock() {
+        /**
+         * 非公平锁不会判断是否需要排队 而是直接上来抢占资源
+         *  如果抢占失败 则会调用acquire方法申请资源
+         */
+        if (compareAndSetState(0, 1))
+            setExclusiveOwnerThread(Thread.currentThread());
+        else
+            acquire(1);
+    }
 
         protected final boolean tryAcquire(int acquires) {
             return nonfairTryAcquire(acquires);
@@ -222,10 +231,10 @@ public class ReentrantLock implements Lock, java.io.Serializable {
     static final class FairSync extends Sync {
         private static final long serialVersionUID = -3000897897090466540L;
 
-        final void lock() {
-            // acquire 是AQS中的方法 代表申请1个资源
-            acquire(1);
-        }
+    final void lock() {
+        // acquire 是AQS中的方法 代表申请1个资源
+        acquire(1);
+    }
 
         /**
          * Fair version of tryAcquire.  Don't grant access unless
@@ -235,6 +244,12 @@ public class ReentrantLock implements Lock, java.io.Serializable {
             final Thread current = Thread.currentThread();
             int c = getState();
             if (c == 0) {
+                /**
+                 *  hasQueuedPredecessors 此方法判断等待队列中是否包含有效节点，
+                 *   返回true则代表队列中包含其他有效节点 需要加入等待队列
+                 *  公平锁与非公平锁 tryAcquire 方法基本相同，只有此处 非公平锁不会判断
+                 *   等待队列中是否包含有效节点而是直接抢占资源
+                 */
                 if (!hasQueuedPredecessors() &&
                     compareAndSetState(0, acquires)) {
                     setExclusiveOwnerThread(current);

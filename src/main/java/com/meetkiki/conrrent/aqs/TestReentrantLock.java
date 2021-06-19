@@ -1,6 +1,5 @@
 package com.meetkiki.conrrent.aqs;
 
-import java.util.concurrent.locks.ReentrantLock;
 
 public class TestReentrantLock {
 
@@ -8,44 +7,27 @@ public class TestReentrantLock {
     public static void main(String[] args) {
         ReentrantLock lock = new ReentrantLock(true);
 
-        new Thread(() -> {
+        Thread threadA = new Thread(getRunnable(lock, 100000), "threadA");
+        Thread threadB = new Thread(getRunnable(lock, 100000), "threadB");
+        Thread threadC = new Thread(getRunnable(lock, 10000), "threadC");
+
+        threadA.start();
+        threadB.start();
+        threadC.start();
+    }
+
+    private static Runnable getRunnable(ReentrantLock lock, int time) {
+        return () -> {
             try {
                 lock.lock();
-
-                Thread.sleep(1000000);
+                System.out.println(Thread.currentThread().getName() + " locked --- ");
+                Thread.sleep(time);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             } finally {
                 lock.unlock();
             }
-        }).start();
-
-        new Thread(() -> {
-            try {
-                lock.lock();
-
-                Thread.sleep(1000000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } finally {
-                lock.unlock();
-            }
-        }).start();
-
-
-        new Thread(() -> {
-            try {
-                lock.lock();
-
-                Thread.sleep(100000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } finally {
-                lock.unlock();
-            }
-        }).start();
-
-
+        };
     }
 
 }

@@ -40,7 +40,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
-import java.util.concurrent.locks.AbstractOwnableSynchronizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
@@ -537,17 +536,25 @@ public abstract class AbstractQueuedSynchronizer
      * initialization, it is modified only via method setHead.  Note:
      * If head exists, its waitStatus is guaranteed not to be
      * CANCELLED.
+     * 这两个Node  节点分别指向了 双向链表队列的首尾节点
+     *  Head节点是一个虚节点 不存储线程数据的 它的next指向第一个节点
      */
     private transient volatile Node head;
 
     /**
      * Tail of the wait queue, lazily initialized.  Modified only via
      * method enq to add new wait node.
+     * tail 节点指向队列中最后一个线程资源(Node)
      */
     private transient volatile Node tail;
 
     /**
      * The synchronization state.
+     *  这个代表资源抢占的状态，初始化为0代表没有线程抢占
+     *   state > 0 代表有线程抢占 资源
+     *  ReentrantLock 中 state代表重入锁的次数
+     *  Semaphore 中 state 代表资源获取的总数
+     *  CountDownLatch 中 state 则是await调用者需要等待释放的资源数
      */
     private volatile int state;
 
@@ -681,6 +688,10 @@ public abstract class AbstractQueuedSynchronizer
          * fails or if status is changed by waiting thread.
          */
         int ws = node.waitStatus;
+        /**
+         * 这里将head的状态设置为初始化状态 因为在唤醒其他节点后 当前head是直接回收的
+         *  假设下面全是取消节点，那么将不会唤醒任何节点 而head仍然是一个初始化队列节点
+         */
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
 
@@ -690,6 +701,12 @@ public abstract class AbstractQueuedSynchronizer
          * traverse backwards from tail to find the actual
          * non-cancelled successor.
          */
+        /**
+         * 这里s是队列第一个节点 循环主要为了找到第一个非取消节点
+         *  当s的waitStatus = 1 代表取消，小于0则说明可以进行唤醒
+         *  遍历是从tail到首节点倒序遍历的 这里没有移除取消的节点
+         *  取消节点在acquireQueued方法中移除
+         */
         Node s = node.next;
         if (s == null || s.waitStatus > 0) {
             s = null;
@@ -697,6 +714,7 @@ public abstract class AbstractQueuedSynchronizer
                 if (t.waitStatus <= 0)
                     s = t;
         }
+        // 如果一个有效节点，那么唤醒它
         if (s != null)
             LockSupport.unpark(s.thread);
     }
@@ -835,7 +853,7 @@ public abstract class AbstractQueuedSynchronizer
     private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
         // 获取前驱节点的状态
         int ws = pred.waitStatus;
-        // SIGNAL 说明 是唤醒状态
+        // SIGNAL 说明 是待唤醒状态
         if (ws == Node.SIGNAL)
             /*
              * This node has already set status asking a release
@@ -948,6 +966,7 @@ public abstract class AbstractQueuedSynchronizer
             /**
              * 抢占到锁资源后，会将failed设置为false 即非失败
              *  如果非失败，那么会去执行临界区资源，最后解锁删除头结点
+             *  如果失败了，标识这个线程被中断或者自旋时出异常了，不再需要获取排队资源，删除队列中的节点
              */
                 cancelAcquire(node);
         }
@@ -1352,6 +1371,10 @@ public abstract class AbstractQueuedSynchronizer
      * @return the value returned from {@link #tryRelease}
      */
     public final boolean release(int arg) {
+        /**
+         * tryRelease 释放独占资源 如果不是占用资源线程调用会抛出异常 由子类实现
+         *  unparkSuccessor 则是唤醒休眠线程
+         */
         if (tryRelease(arg)) {
             Node h = head;
             if (h != null && h.waitStatus != 0)

@@ -221,9 +221,9 @@ public class Semaphore implements java.io.Serializable {
     static final class NonfairSync extends Sync {
         private static final long serialVersionUID = -2694183684443567898L;
 
-        NonfairSync(int permits) {
-            super(permits);
-        }
+    NonfairSync(int permits) {
+        super(permits);
+    }
 
         protected int tryAcquireShared(int acquires) {
             return nonfairTryAcquireShared(acquires);
@@ -236,9 +236,9 @@ public class Semaphore implements java.io.Serializable {
     static final class FairSync extends Sync {
         private static final long serialVersionUID = 2014338818796000944L;
 
-        FairSync(int permits) {
-            super(permits);
-        }
+    FairSync(int permits) {
+        super(permits);
+    }
 
         protected int tryAcquireShared(int acquires) {
             for (;;) {
@@ -277,6 +277,11 @@ public class Semaphore implements java.io.Serializable {
      *        else {@code false}
      */
     public Semaphore(int permits, boolean fair) {
+        /**
+         * 第一个参数permits代表总许可数 会设置给AQS的state作为总资源数
+         *  fair 作为第二个参数 如果为true 表示是一个公平信号量
+         *  否则为 非公平信号量，这里我们可以放到下面查看区别
+         */
         sync = fair ? new FairSync(permits) : new NonfairSync(permits);
     }
 

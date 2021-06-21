@@ -691,6 +691,7 @@ public abstract class AbstractQueuedSynchronizer
         /**
          * 这里将head的状态设置为初始化状态 因为在唤醒其他节点后 当前head是直接回收的
          *  假设下面全是取消节点，那么将不会唤醒任何节点 而head仍然是一个初始化队列节点
+         * -1 标识后续节点是等待状态 更新为0 代表将唤醒
          */
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
@@ -738,12 +739,25 @@ public abstract class AbstractQueuedSynchronizer
          */
         for (; ; ) {
             Node h = head;
+            // 判断队列不为空的标准写法
             if (h != null && h != tail) {
                 int ws = h.waitStatus;
+                /**
+                 * 将head SIGNAL更新为0初始状态 SIGNAL标识后一个节点处于等待状态
+                 *  compareAndSetWaitStatus 这里做的事情和 unparkSuccessor第一步一样
+                 * 是防止并发场景下 其他线程进行了唤醒 此处不会再进行二次唤醒 且head更改后进行下次唤醒
+                 */
                 if (ws == Node.SIGNAL) {
                     if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
                         continue;            // loop to recheck cases
                     unparkSuccessor(h);
+                /**
+                 * 如果head为0  这里有三种情况
+                 *  1. 刚刚初始化 head == tail
+                 *  2. 线程刚刚入队，还没有来得及shouldParkAfterFailedAcquire 更新前驱节点为SIGNAL
+                 *  3. 前一个线程刚刚释放锁 unparkSuccessor 中的 判断也会首先更新前驱结点
+                 * 尝试更新head 为 PROPAGATE 状态 表示下一次共享状态会无限制传播下去
+                 */
                 } else if (ws == 0 &&
                         !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
                     continue;                // loop on failed CAS
@@ -763,6 +777,7 @@ public abstract class AbstractQueuedSynchronizer
      */
     private void setHeadAndPropagate(Node node, int propagate) {
         Node h = head; // Record old head for check below
+        // 设置当前节点为头结点
         setHead(node);
         /*
          * Try to signal next queued node if:
@@ -779,6 +794,11 @@ public abstract class AbstractQueuedSynchronizer
          * unnecessary wake-ups, but only when there are multiple
          * racing acquires/releases, so most need signals now or soon
          * anyway.
+         */
+        /**
+         * 这里 会判断传入的剩余资源数是否大于0 如果 propagate > 0 说明还有剩余资源
+         *  可以唤醒其他线程
+         * head 为空代表未初始化 没看懂为啥要这么判断 doReleaseShared 如果head为空什么也不会做
          */
         if (propagate > 0 || h == null || h.waitStatus < 0 ||
                 (h = head) == null || h.waitStatus < 0) {
@@ -1100,6 +1120,7 @@ public abstract class AbstractQueuedSynchronizer
                     if (r >= 0) {
                         /**
                          * setHeadAndPropagate 设置当前节点为head r是剩余的资源
+                         *  设置当前节点到头结点
                          *  如果r > 0 还会继续唤醒其他挂起的线程
                          */
                         setHeadAndPropagate(node, r);

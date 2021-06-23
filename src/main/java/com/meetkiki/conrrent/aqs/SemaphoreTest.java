@@ -5,7 +5,7 @@ public class SemaphoreTest {
     @SuppressWarnings("DuplicatedCode")
     public static void main(String[] args) {
 
-        Semaphore semaphore = new Semaphore(2);
+        Semaphore semaphore = new Semaphore(2, true);
 
         Thread threadA = new Thread(getRunnable(semaphore, 1000), "threadA");
         Thread threadB = new Thread(getRunnable(semaphore, 1000), "threadB");

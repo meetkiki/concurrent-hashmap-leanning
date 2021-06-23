@@ -176,6 +176,12 @@ public class Semaphore implements java.io.Serializable {
 
         final int nonfairTryAcquireShared(int acquires) {
             for (;;) {
+                /**
+                 * 这里和公平锁不一样的地方在于 少了一个hasQueuedPredecessors() 方法判断
+                 *  如果没有判断hasQueuedPredecessors()，当前线程过来抢占资源是不需要检查
+                 *  等待队列中是否包含其他有效节点，而是直接抢占资源，不存在排队的概念，虽然
+                 *  降低了线程挂起等待的概率，但也有了线程饥饿问题
+                 */
                 int available = getState();
                 int remaining = available - acquires;
                 if (remaining < 0 ||
@@ -186,6 +192,11 @@ public class Semaphore implements java.io.Serializable {
 
         protected final boolean tryReleaseShared(int releases) {
             for (;;) {
+                /**
+                 * 获取当前资源数，释放资源则是增加state的值
+                 *  这里写的比较谨慎 判断 数值溢出的场景 两个正数之和可能是负数
+                 * 最后使用CAS的方式更新state的值，如果失败则重试
+                 */
                 int current = getState();
                 int next = current + releases;
                 if (next < current) // overflow
@@ -226,6 +237,7 @@ public class Semaphore implements java.io.Serializable {
     }
 
         protected int tryAcquireShared(int acquires) {
+            // 调用父类不公平的抢占共享锁资源方法
             return nonfairTryAcquireShared(acquires);
         }
     }
@@ -236,14 +248,24 @@ public class Semaphore implements java.io.Serializable {
     static final class FairSync extends Sync {
         private static final long serialVersionUID = 2014338818796000944L;
 
-    FairSync(int permits) {
-        super(permits);
-    }
+        FairSync(int permits) {
+            super(permits);
+        }
 
         protected int tryAcquireShared(int acquires) {
             for (;;) {
+                /**
+                 * 判断队列中是否含有 有效节点 如果有等待队列直接返回 -1
+                 *  代表去doAcquireSharedInterruptibly 方法中，去等待队列中挂起
+                 * 共享锁中 s.thread != Thread.currentThread() 头结点的thread值
+                 * 肯定是一直为null的 所以此时只需要判断队列不为空 即可需要入队了
+                 */
                 if (hasQueuedPredecessors())
                     return -1;
+                /**
+                 * 获取当前资源数，如果减去当前需要申请的资源
+                 * 大于等于0则使用cas的方式更新state的值，成功后返回剩余资源数
+                 */
                 int available = getState();
                 int remaining = available - acquires;
                 if (remaining < 0 ||
@@ -428,6 +450,7 @@ public class Semaphore implements java.io.Serializable {
      * in the application.
      */
     public void release() {
+        // 释放共享资源1
         sync.releaseShared(1);
     }
 

@@ -737,6 +737,11 @@ public abstract class AbstractQueuedSynchronizer
          * unparkSuccessor, we need to know if CAS to reset status
          * fails, if so rechecking.
          */
+        /**
+         * 此处方法有两个地方会调用：
+         *  1. 获取资源时，判断还有资源时 会调用doReleaseShared 唤醒等待的线程
+         *  2. 释放资源时，唤醒队列中的线程去争取资源
+         */
         for (; ; ) {
             Node h = head;
             // 判断队列不为空的标准写法
@@ -750,6 +755,7 @@ public abstract class AbstractQueuedSynchronizer
                 if (ws == Node.SIGNAL) {
                     if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
                         continue;            // loop to recheck cases
+                    // 唤醒队列中的后置节点
                     unparkSuccessor(h);
                 /**
                  * 如果head为0  这里有三种情况
@@ -762,6 +768,10 @@ public abstract class AbstractQueuedSynchronizer
                         !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
                     continue;                // loop on failed CAS
             }
+            /**
+             * head发生变化只可能其他线程唤醒后 拿到了资源 更改了头节点
+             *  如果更新了头结点那么 尝试继续唤醒
+             */
             if (h == head)                   // loop if head changed
                 break;
         }
@@ -799,6 +809,13 @@ public abstract class AbstractQueuedSynchronizer
          * 这里 会判断传入的剩余资源数是否大于0 如果 propagate > 0 说明还有剩余资源
          *  可以唤醒其他线程
          * head 为空代表未初始化 没看懂为啥要这么判断 doReleaseShared 如果head为空什么也不会做
+         *
+         * 此时的h 是当前节点的前驱节点
+         *  h.waitStatus < 0 可能是在唤醒当前线程时，其他线程进行了资源释放 调用doReleaseShared
+         *  会执行compareAndSetWaitStatus(h, 0, Node.PROPAGATE) 将head更新为PROPAGATE
+         *  所以 当head小于0 时需要唤醒其他线程去抢占资源
+         *  第二种情况是 当前线程本身就不是队尾，但是 h = head != null 那么后置节点肯定排队的时候就
+         *   把前驱 就是当前节点更新为了SIGNAL 那么一定是-1的 此时会进行一次不必要的唤醒
          */
         if (propagate > 0 || h == null || h.waitStatus < 0 ||
                 (h = head) == null || h.waitStatus < 0) {
@@ -854,6 +871,7 @@ public abstract class AbstractQueuedSynchronizer
                 if (next != null && next.waitStatus <= 0)
                     compareAndSetNext(pred, predNext, next);
             } else {
+                // 如果是第一个节点取消 直接唤醒下一个节点
                 unparkSuccessor(node);
             }
 
@@ -898,7 +916,13 @@ public abstract class AbstractQueuedSynchronizer
              * need a signal, but don't park yet.  Caller will need to
              * retry to make sure it cannot acquire before parking.
              */
-            // 设置前驱节点为SIGNAL 在park前设置前驱节点为SIGNAL
+            /**
+             * 设置前驱节点为SIGNAL 在park前设置前驱节点为SIGNAL 代表此线程下次循环就进入挂起
+             *
+             *  如果是共享锁的情况下，在执行第一次shouldParkAfterFailedAcquire刚刚修改为SIGNAL时
+             *   其他线程进来释放资源 此时head的状态会被修改为PROPAGATE 此时就需要再获取一次资源
+             *   防止因为其他线程释放了资源 还无法察觉
+             */
             compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
         }
         return false;
@@ -987,6 +1011,8 @@ public abstract class AbstractQueuedSynchronizer
              * 抢占到锁资源后，会将failed设置为false 即非失败
              *  如果非失败，那么会去执行临界区资源，最后解锁删除头结点
              *  如果失败了，标识这个线程被中断或者自旋时出异常了，不再需要获取排队资源，删除队列中的节点
+             *  这里是不会失败的，某些方法 是不支持中断的 中断了会立刻响应park方法
+             *  并在上面手动抛出异常 此时需要是取消在队列中的状态的
              */
                 cancelAcquire(node);
         }
@@ -1081,6 +1107,14 @@ public abstract class AbstractQueuedSynchronizer
                         return;
                     }
                 }
+                /**
+                 * 拿取资源失败后 或者没有资源时 会进入shouldParkAfterFailedAcquire判断是否需要休眠
+                 *
+                 *  shouldParkAfterFailedAcquire 首先会清除取消节点
+                 *  1. 前驱节点是SIGNAL 说明是第二次循环，则返回true
+                 *  2. 前驱节点是0 代表此节点是 刚加入的Node节点 会在第二次循环时将前驱节点更改为SIGNAL
+                 *  SIGNAL 只是标记后置节点是一个待唤醒的状态 前置节点可以唤醒
+                 */
                 if (shouldParkAfterFailedAcquire(p, node) &&
                         parkAndCheckInterrupt())
                     interrupted = true;
@@ -1130,17 +1164,31 @@ public abstract class AbstractQueuedSynchronizer
                     }
                 }
                 /**
-                 * 同理 这里也是在判断是否需要挂起
-                 *  前驱节点为SIGNAL 说明是一个有效节点 当前线程进入parkAndCheckInterrupt方法等待
+                 * 同理 shouldParkAfterFailedAcquire 这里也是在判断是否需要挂起
+                 *  前驱节点为SIGNAL
+                 * 第一次循环不会进入parkAndCheckInterrupt 第二次循环仍然无法获取到锁
+                 *  则会进入parkAndCheckInterrupt方法
                  *  与独占模式不同的是 这里如果是中断 则会抛出InterruptedException异常
                  *  使用 Semaphore.acquireShared 方法可以避免异常
                  */
                 if (shouldParkAfterFailedAcquire(p, node) &&
                         parkAndCheckInterrupt())
+                /**
+                 *  parkAndCheckInterrupt 方法使用的是 LockSupport.park(this)
+                 *   park方法是响应中断的，如果检测到外部将本线程标记为中断，那么会从阻塞中直接返回
+                 *   Thread.interrupted() 为true时 此处会抛出异常InterruptedException
+                 */
                     throw new InterruptedException();
             }
         } finally {
             if (failed)
+            /**
+             * 抢占到锁资源后，会将failed设置为false 即非失败
+             *  如果非失败，那么会去执行临界区资源，最后解锁删除头结点
+             *  如果失败了，标识这个线程被中断或者自旋时出异常了，不再需要获取排队资源，删除队列中的节点
+             *  这里是不会失败的，某些方法 是不支持中断的 中断了会立刻响应park方法
+             *  并在上面手动抛出异常 此时需要是取消在队列中的状态的
+             */
                 cancelAcquire(node);
         }
     }
@@ -1459,8 +1507,16 @@ public abstract class AbstractQueuedSynchronizer
      */
     public final void acquireSharedInterruptibly(int arg)
             throws InterruptedException {
+        /**
+         * 提前判断线程是否中断 如果是中断 直接抛出异常 Interruptibly代表会响应中断的
+         */
         if (Thread.interrupted())
             throw new InterruptedException();
+        /**
+         * 调用子类实现的 tryAcquireShared方法
+         *  如果返回值小于0 这个返回值就是剩余资源数
+         *  就会调用doAcquireSharedInterruptibly 进入队列
+         */
         if (tryAcquireShared(arg) < 0)
             doAcquireSharedInterruptibly(arg);
     }
@@ -1499,6 +1555,10 @@ public abstract class AbstractQueuedSynchronizer
      * @return the value returned from {@link #tryReleaseShared}
      */
     public final boolean releaseShared(int arg) {
+        /**
+         * 调用子类实现的tryReleaseShared方法
+         *  释放资源后 会调用doReleaseShared方法唤醒队列中的线程
+         */
         if (tryReleaseShared(arg)) {
             doReleaseShared();
             return true;
@@ -1686,6 +1746,7 @@ public abstract class AbstractQueuedSynchronizer
          *
          * 如果 h.next != null 说明队列最少有一个元素，那么此时判断第一个有效节点线程与当前线程是否相同
          *  如果是相同的 那么说明可以尝试继续获取 不相同 则入队
+         * 共享锁中 thread 一直为null 这里肯定是不相等的
          */
         return h != t && ((s = h.next) == null || s.thread != Thread.currentThread());
     }

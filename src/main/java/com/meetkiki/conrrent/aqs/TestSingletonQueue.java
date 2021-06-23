@@ -2,7 +2,7 @@ package com.meetkiki.conrrent.aqs;
 
 import java.util.concurrent.locks.LockSupport;
 
-public class TestQueue {
+public class TestSingletonQueue {
 
     public static void main(String[] args) {
 

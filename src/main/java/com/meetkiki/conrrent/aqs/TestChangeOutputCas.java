@@ -1,6 +1,6 @@
 package com.meetkiki.conrrent.aqs;
 
-public class ChangeOutputCasTest {
+public class TestChangeOutputCas {
 
     private static volatile boolean out = false;
 

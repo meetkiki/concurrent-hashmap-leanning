@@ -2,7 +2,7 @@ package com.meetkiki.conrrent.aqs;
 
 import java.util.concurrent.locks.Condition;
 
-public class ReentrantLockConditionTest {
+public class TestReentrantLockCondition {
 
     ReentrantLock lock = new ReentrantLock();
     Condition condition = lock.newCondition();
@@ -43,7 +43,7 @@ public class ReentrantLockConditionTest {
     }
 
     public static void main(String[] args) {
-        ReentrantLockConditionTest t = new ReentrantLockConditionTest();
+        TestReentrantLockCondition t = new TestReentrantLockCondition();
         Thread t1 = new Thread(t::await);
 
         Thread t2 = new Thread(t::signal);

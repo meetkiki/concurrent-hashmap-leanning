@@ -3,7 +3,7 @@ package com.meetkiki.conrrent.aqs;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ChangeOutputTest {
+public class TestChangeOutput {
 
     static boolean[] start = new boolean[1];
 

@@ -1,6 +1,6 @@
 package com.meetkiki.conrrent.aqs;
 
-public class SemaphoreTest {
+public class TestSemaphore {
 
     @SuppressWarnings("DuplicatedCode")
     public static void main(String[] args) {

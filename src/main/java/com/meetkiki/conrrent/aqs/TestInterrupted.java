@@ -2,7 +2,7 @@ package com.meetkiki.conrrent.aqs;
 
 import java.util.concurrent.locks.LockSupport;
 
-public class InterruptedTest {
+public class TestInterrupted {
 
     public static void main(String[] args) throws InterruptedException {
 

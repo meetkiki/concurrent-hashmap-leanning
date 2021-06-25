@@ -4,6 +4,8 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Queue;
 
+import static java.lang.reflect.Array.newInstance;
+
 public class SingletonQueue<D> implements Queue<D> {
 
     /**
@@ -172,8 +174,7 @@ public class SingletonQueue<D> implements Queue<D> {
     @Override
     public <T> T[] toArray(T[] a) {
         if (a.length < size)
-            a = (T[])java.lang.reflect.Array.newInstance(
-                    a.getClass().getComponentType(), size);
+            a = (T[]) newInstance(a.getClass().getComponentType(), size);
         Object[] result = a;
         Node<T> node = (Node<T>) head;
         int i = 0;

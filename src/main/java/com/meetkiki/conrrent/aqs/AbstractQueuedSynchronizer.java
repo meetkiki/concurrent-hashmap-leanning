@@ -1861,8 +1861,17 @@ public abstract class AbstractQueuedSynchronizer
      * @return true if is reacquiring
      */
     final boolean isOnSyncQueue(Node node) {
+        /**
+         * 如果第一次进入 肯定是CONDITION状态 直接返回false的
+         *  因为 fullyRelease 会取消所有占用资源
+         * node.prev 为空说明不在同步队列 因为同步队列创建节点前会先设置前驱节点
+         */
         if (node.waitStatus == Node.CONDITION || node.prev == null)
             return false;
+        /**
+         * 后续其他线程调用signal时 会将此线程的Node节点入同步队列
+         *  如果node后继不为空，说明已经在sync queue
+         */
         if (node.next != null) // If has successor, it must be on queue
             return true;
         /*
@@ -1872,6 +1881,11 @@ public abstract class AbstractQueuedSynchronizer
          * will always be near the tail in calls to this method, and
          * unless the CAS failed (which is unlikely), it will be
          * there, so we hardly ever traverse much.
+         */
+        /**
+         * 现在发现node处于一个状态：前驱不为空，但后继为空
+         *  如果node是当前队尾肯定也是这种状态 enq进队尾时CAS设置tail失败时
+         * 这里就从头检查同步队列中是否包含当前节点
          */
         return findNodeFromTail(node);
     }
@@ -1885,6 +1899,9 @@ public abstract class AbstractQueuedSynchronizer
     private boolean findNodeFromTail(Node node) {
         Node t = tail;
         for (; ; ) {
+            /**
+             * 从尾遍历 寻找传入节点是否存在
+             */
             if (t == node)
                 return true;
             if (t == null)
@@ -1929,6 +1946,11 @@ public abstract class AbstractQueuedSynchronizer
      * @return true if cancelled before the node was signalled
      */
     final boolean transferAfterCancelledWait(Node node) {
+        /**
+         * 线程是否通过signal的标志是状态是否为0 如果为CONDITION
+         *  说明线程是在await中中断的，那么需要入队，交给同步队列acquireQueued方法去处理
+         * 否则是在signal之后中断的
+         */
         if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
             enq(node);
             return true;
@@ -1939,6 +1961,7 @@ public abstract class AbstractQueuedSynchronizer
          * incomplete transfer is both rare and transient, so just
          * spin.
          */
+        // 走到这里说明是其他线程调用了signal方法，那么自旋等待该节点入队完成
         while (!isOnSyncQueue(node))
             Thread.yield();
         return false;
@@ -1954,6 +1977,9 @@ public abstract class AbstractQueuedSynchronizer
     final int fullyRelease(Node node) {
         boolean failed = true;
         try {
+            /**
+             * 获取当前state数 调用release释放资源
+             */
             int savedState = getState();
             if (release(savedState)) {
                 failed = false;
@@ -1962,6 +1988,7 @@ public abstract class AbstractQueuedSynchronizer
                 throw new IllegalMonitorStateException();
             }
         } finally {
+            // 如果释放中抛出异常，则会将当前节点置为CANCELLED
             if (failed)
                 node.waitStatus = Node.CANCELLED;
         }
@@ -2086,13 +2113,21 @@ public abstract class AbstractQueuedSynchronizer
          *
          * @return its new wait node
          */
+        // 初始化Condition队列，包装当前线程成Node节点并放到尾结点 返回当前节点
         private Node addConditionWaiter() {
             Node t = lastWaiter;
             // If lastWaiter is cancelled, clean out.
+            // 如果尾结点不为CONDITION状态 需要进行清理
             if (t != null && t.waitStatus != Node.CONDITION) {
                 unlinkCancelledWaiters();
+                // 上面方法可能删除了部分节点 包括尾节点 更新lastWaiter 节点
                 t = lastWaiter;
             }
+            /**
+             * 包装当前线程为一个Node节点，并且节点状态为CONDITION
+             *  t是尾结点，如果为null说明未进行初始化 将first指向当前节点代表初始化
+             *  如果不为空 则将当前节点 赋值为 next
+             */
             Node node = new Node(Thread.currentThread(), Node.CONDITION);
             if (t == null)
                 firstWaiter = node;
@@ -2151,6 +2186,11 @@ public abstract class AbstractQueuedSynchronizer
             Node t = firstWaiter;
             Node trail = null;
             while (t != null) {
+                /**
+                 * 从头开始遍历 trail表示上一个节点CONDITION状态的节点
+                 *  如果当前Node不为CONDITION
+                 *   则将上一个节点的nextWaiter指向当前节点的next 即删除当前节点
+                 */
                 Node next = t.nextWaiter;
                 if (t.waitStatus != Node.CONDITION) {
                     t.nextWaiter = null;
@@ -2276,16 +2316,29 @@ public abstract class AbstractQueuedSynchronizer
          * </ol>
          */
         public final void await() throws InterruptedException {
+            // 如果线程已经中断，则抛出异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            // 包装当前线程为Node节点 放到队列末尾
             Node node = addConditionWaiter();
+            // 调用release方法释放当前线程资源，会唤醒其他线程抢占资源
             int savedState = fullyRelease(node);
             int interruptMode = 0;
+            // 判断当前Node是否在同步队列上
             while (!isOnSyncQueue(node)) {
+                // 如果不在同步队列上 就直接挂起
                 LockSupport.park(this);
+                /**
+                 * 这里会有一个判断是否中断 因为如果中断，是会直接从park中返回
+                 *  checkInterruptWhileWaiting 检测是否中断
+                 *   0 返回没有被中断过
+                 *   THROW_IE 在signal流程前取消 需要抛出异常
+                 *   REINTERRUPT 当signal流程发生在中断流程之前时 此时不需要 需要对节点状态取消
+                 */
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            // 下面的代码是其他线程唤醒后 执行 折叠 等下看
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
             if (node.nextWaiter != null) // clean up if cancelled

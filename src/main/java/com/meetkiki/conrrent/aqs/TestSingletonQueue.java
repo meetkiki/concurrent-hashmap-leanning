@@ -8,7 +8,6 @@ public class TestSingletonQueue {
 
         SingletonQueue<Integer> queue = new SingletonQueue<>();
 
-        LockSupport.park();
         queue.add(1);
         queue.add(2);
         queue.add(3);

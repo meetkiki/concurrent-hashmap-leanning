@@ -515,6 +515,7 @@ public class ReentrantLock implements Lock, java.io.Serializable {
      * @return the Condition object
      */
     public Condition newCondition() {
+        // 每调用一次newCondition就返回一个新的ConditionObject
         return sync.newCondition();
     }
 

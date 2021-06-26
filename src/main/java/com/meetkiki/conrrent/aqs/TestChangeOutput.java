@@ -1,7 +1,6 @@
 package com.meetkiki.conrrent.aqs;
 
 import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class TestChangeOutput {
 
@@ -18,14 +17,31 @@ public class TestChangeOutput {
         Condition lCondition = lock.newCondition();
 
         new Thread(() -> {
-            // 等待一个start的信号
-            while (!start[0]){
+            for (int i = 0; i < numberChars.length; i++) {
+                lock.lock();
                 try {
-                    Thread.sleep(1);
+                    System.out.println("==== number : " + numberChars[i] + " =====");
+//                    start[0] = true;
+                    lCondition.signal();
+                    nCondition.await();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
+                } finally {
+                    lock.unlock();
                 }
             }
+        }).start();
+
+
+        new Thread(() -> {
+            // 等待一个start的信号
+//            while (!start[0]){
+//                try {
+//                    Thread.sleep(1);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }
             for (int i = 0; i < letterChars.length; i++) {
                 lock.lock();
                 try {
@@ -41,25 +57,6 @@ public class TestChangeOutput {
                 }
             }
         }).start();
-
-
-        new Thread(() -> {
-            for (int i = 0; i < numberChars.length; i++) {
-                lock.lock();
-                try {
-                    System.out.println("==== number : " + numberChars[i] + " =====");
-                    start[0] = true;
-                    lCondition.signal();
-                    nCondition.await();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } finally {
-                    lock.unlock();
-                }
-            }
-        }).start();
-
-
     }
 
 

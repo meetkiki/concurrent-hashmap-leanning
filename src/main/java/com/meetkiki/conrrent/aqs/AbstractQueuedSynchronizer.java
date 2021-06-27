@@ -1922,6 +1922,12 @@ public abstract class AbstractQueuedSynchronizer
         /*
          * If cannot change waitStatus, the node has been cancelled.
          */
+        /**
+         * 如果在等待队列中 并且没有被其他线程取消的话就是CONDITION状态
+         *  这里使用CAS的方式操作就是防止其他线程取消操作 如果其他线程已经更新为CANCEL
+         *  此时就不在尝试 返回false
+         * 这里不存在并发场景 因为调用transferForSignal之前会判断独占锁状态
+         */
         if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
             return false;
 
@@ -1930,6 +1936,18 @@ public abstract class AbstractQueuedSynchronizer
          * indicate that thread is (probably) waiting. If cancelled or
          * attempt to set waitStatus fails, wake up to resync (in which
          * case the waitStatus can be transiently and harmlessly wrong).
+         */
+        /**
+         * 这里 enq方法返回的是 node的前驱节点
+         *  如果前驱节点的waitStatus大于0说明前驱节点取消了
+         *   那么直接唤醒当前线程
+         *  如果 ws > 0 不满足 即  ws <= 0 那么 就需要将前驱节点更新为SIGNAL
+         *  为什么要这么做呢？
+         *   因为acquireQueued方法保证了每个入队的节点都保证前驱为SIGNAL来标识后续节点处于等待状态
+         *   这里compareAndSetWaitStatus(p, ws, Node.SIGNAL)和LockSupport.unpark(node.thread)
+         *    都是为了间接保证当前入队节点的前驱是一个SIGNAL状态
+         *   因为唤醒当前线程后 在await方法中 acquireQueued方法就会执行抢占资源和更新前驱节点状态的逻辑
+         * 如果是当前线程更新首节点状态成功，入同步队列 那么就返回true
          */
         Node p = enq(node);
         int ws = p.waitStatus;
@@ -2146,11 +2164,23 @@ public abstract class AbstractQueuedSynchronizer
          */
         private void doSignal(Node first) {
             do {
+                /**
+                 * 将first的next指向当前firstWaiter 如果next为空
+                 *  说明队列也为空，将lastWaiter更新为空
+                 * 如果不为空，那么将first的nextWaiter设置为空
+                 *  且调用transferForSignal将当前线程节点加入同步队列 可能唤醒头结点线程
+                 * 唤醒后也是进入acquireQueued方法去抢占资源了 交给了独占锁逻辑处理
+                 */
                 if ((firstWaiter = first.nextWaiter) == null)
                     lastWaiter = null;
                 first.nextWaiter = null;
-            } while (!transferForSignal(first) &&
-                    (first = firstWaiter) != null);
+                /**
+                 *  transferForSignal 主要 加入同步队列 (释放信号) 可能唤醒线程
+                 *
+                 *  如果transferForSignal更新失败 说明有其他线程取消了
+                 *   返回false 那么此时拿到最新的firstWaiter 继续循环
+                 */
+            } while (!transferForSignal(first) && (first = firstWaiter) != null);
         }
 
         /**
@@ -2163,6 +2193,10 @@ public abstract class AbstractQueuedSynchronizer
             do {
                 Node next = first.nextWaiter;
                 first.nextWaiter = null;
+                /**
+                 * 与doSignal方法不同的是 会循环所有的节点
+                 *  并调用transferForSignal将其加入到同步队列
+                 */
                 transferForSignal(first);
                 first = next;
             } while (first != null);
@@ -2217,6 +2251,12 @@ public abstract class AbstractQueuedSynchronizer
          *                                      returns {@code false}
          */
         public final void signal() {
+            /**
+             * signal 方法 和await一样 调用前会判断当前线程是否持有锁
+             *  如果不是持有锁状态 抛出IllegalMonitorStateException异常
+             *
+             * 随后就会 signal 将条件队列第一个节点加入同步队列
+             */
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
             Node first = firstWaiter;
@@ -2296,6 +2336,11 @@ public abstract class AbstractQueuedSynchronizer
          */
         private void reportInterruptAfterWait(int interruptMode)
                 throws InterruptedException {
+            /**
+             * 在await方法中 其他线程执行signal前进行了中断
+             *  那么需要对中断进行响应 抛出InterruptedException异常
+             * 其他模式中断 设置标志位
+             */
             if (interruptMode == THROW_IE)
                 throw new InterruptedException();
             else if (interruptMode == REINTERRUPT)
@@ -2315,37 +2360,55 @@ public abstract class AbstractQueuedSynchronizer
          * <li> If interrupted while blocked in step 4, throw InterruptedException.
          * </ol>
          */
-        public final void await() throws InterruptedException {
-            // 如果线程已经中断，则抛出异常
-            if (Thread.interrupted())
-                throw new InterruptedException();
-            // 包装当前线程为Node节点 放到队列末尾
-            Node node = addConditionWaiter();
-            // 调用release方法释放当前线程资源，会唤醒其他线程抢占资源
-            int savedState = fullyRelease(node);
-            int interruptMode = 0;
-            // 判断当前Node是否在同步队列上
-            while (!isOnSyncQueue(node)) {
-                // 如果不在同步队列上 就直接挂起
-                LockSupport.park(this);
-                /**
-                 * 这里会有一个判断是否中断 因为如果中断，是会直接从park中返回
-                 *  checkInterruptWhileWaiting 检测是否中断
-                 *   0 返回没有被中断过
-                 *   THROW_IE 在signal流程前取消 需要抛出异常
-                 *   REINTERRUPT 当signal流程发生在中断流程之前时 此时不需要 需要对节点状态取消
-                 */
-                if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
-                    break;
-            }
-            // 下面的代码是其他线程唤醒后 执行 折叠 等下看
-            if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
-                interruptMode = REINTERRUPT;
-            if (node.nextWaiter != null) // clean up if cancelled
-                unlinkCancelledWaiters();
-            if (interruptMode != 0)
-                reportInterruptAfterWait(interruptMode);
+    public final void await() throws InterruptedException {
+        // 如果线程已经中断，则抛出异常
+        if (Thread.interrupted())
+            throw new InterruptedException();
+        // 包装当前线程为Node节点 放到队列末尾
+        Node node = addConditionWaiter();
+        // 调用release方法释放当前线程资源，会唤醒其他线程抢占资源
+        int savedState = fullyRelease(node);
+        int interruptMode = 0;
+        // 判断当前Node是否在同步队列上
+        while (!isOnSyncQueue(node)) {
+            // 如果不在同步队列上 就直接挂起
+            LockSupport.park(this);
+            /**
+             * 这里会有一个判断是否中断 因为如果中断，是会直接从park中返回
+             *  checkInterruptWhileWaiting 检测是否中断
+             *   0 返回没有被中断过
+             *   THROW_IE 在signal流程前取消 需要抛出异常
+             *   REINTERRUPT 当signal流程发生在中断流程之前时 此时不需要 需要对节点状态取消
+             * 并且会调用transferAfterCancelledWait方法将中断线程加入同步队列
+             */
+            if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
+                break;
         }
+        /**
+         * 从上面循环跳出有两种情况
+         *  1. 线程中断 此时需要检测是在什么时候发生的 checkInterruptWhileWaiting 进行相应的处理
+         *  2. 被其他线程调用signal方法加入同步队列唤醒，此时已经在同步队列中 isOnSyncQueue 返回true
+         *  上面两个情况都会在同步队列中 那么进入下个acquireQueued方法中都会兼容处理上面两种情况
+         *  并且将fullyRelease释放的资源 重新获取回来 interruptMode是之前被中断的模式
+         *
+         *  acquireQueued 返回true的条件是在acquireQueued方法中获取锁失败并且进入了同步队列
+         *   方法中发生了中断 那么就需要判断interruptMode 除了THROW_IE 只有0 和 REINTERRUPT
+         *   即这里为了处理acquireQueued方法中发生的中断 之前interruptMode为0 但acquireQueued却中断了
+         *   如果在acquireQueued方法中发生了中断 就把interruptMode升级为REINTERRUPT
+         *   会在reportInterruptAfterWait中重新设置标志位
+         */
+        if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
+            interruptMode = REINTERRUPT;
+        /**
+         * signal 将节点加入同步队列时会调用 first.nextWaiter = null
+         *  这里是兼容中断线程的逻辑
+         */
+        if (node.nextWaiter != null) // clean up if cancelled
+            unlinkCancelledWaiters();
+        // 最后会根据不同的interruptMode来做出不同的响应
+        if (interruptMode != 0)
+            reportInterruptAfterWait(interruptMode);
+    }
 
         /**
          * Implements timed condition wait.

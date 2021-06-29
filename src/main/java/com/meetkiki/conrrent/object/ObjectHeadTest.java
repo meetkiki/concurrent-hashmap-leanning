@@ -38,5 +38,6 @@ public class ObjectHeadTest {
 		System.out.println(ClassLayout.parseClass(ObjectHeadTest.class).toPrintable());
 		System.out.println("======================================");
 		System.out.println(ClassLayout.parseInstance(object).toPrintable());
+//		ClassLayout.parseInstance(object).
 	}
 }

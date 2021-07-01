@@ -63,7 +63,7 @@
         <dependency>
             <groupId>org.openjdk.jol</groupId>
             <artifactId>jol-core</artifactId>
-            <version>0.12</version>
+            <version>0.16</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.ow2.asm/asm -->

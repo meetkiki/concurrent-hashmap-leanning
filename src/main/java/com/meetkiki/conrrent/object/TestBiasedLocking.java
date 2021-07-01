@@ -32,9 +32,10 @@ public class TestBiasedLocking {
                     System.out.println("第" + (i + 1) + "次加锁-线程1"); // 50个妹子第一次结婚
                     System.out.println(ClassLayout.parseInstance(testBiasedLocking).toPrintable()); // 打印对象头信息
                 }
+                int i1 = testBiasedLocking.hashCode();
             }
         }, "线程1").start();
-        
+
         // 让线程1跑一会儿
         Thread.sleep(1000);
         

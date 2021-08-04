@@ -3,14 +3,10 @@ package com.meetkiki.conrrent.map.singleton;
 
 public class DoubleCheckSingleton extends AbstractSingleton {
 
-    private final String name;
-
     // volatile double 检查单例模式
     private static volatile DoubleCheckSingleton INSTANCE;
 
-    private DoubleCheckSingleton() {
-        this.name = "instance name";
-    }
+    private DoubleCheckSingleton() { }
 
     public static DoubleCheckSingleton getInstance() {
         if (INSTANCE == null) {

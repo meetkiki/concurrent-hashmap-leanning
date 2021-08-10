@@ -21,9 +21,7 @@ public class NioServer {
     public NioServer(int port) throws Exception {
         selector = Selector.open(); // 打开一个选择器 选择器能够监听是否有感兴趣的事情发生
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-        ServerSocket serverSocket = serverSocketChannel.socket();
-        InetSocketAddress inetSocketAddress = new InetSocketAddress(port);
-        serverSocket.bind(inetSocketAddress);
+        serverSocketChannel.bind(new InetSocketAddress(port));
         serverSocketChannel.configureBlocking(false); // 非阻塞
         serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT); // 注册感兴趣的事件
         System.out.println("--server --- start----");
@@ -43,7 +41,6 @@ public class NioServer {
                 handle(selectionKey); //处理 ，路由操作
                 it.remove();
             }
-
         }
     }
 
@@ -65,7 +62,6 @@ public class NioServer {
             byteBuffer.flip();
             socketChannel.write(byteBuffer);
             System.out.println("--write to client --");
-
         }
     }
 

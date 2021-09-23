@@ -10,7 +10,7 @@ import java.util.TreeSet;
 public class MergeRanges {
 
     public static void main(String[] args) {
-        TreeSet<Range> treeSet = new TreeSet();
+        TreeSet<Range> treeSet = new TreeSet<>();
         treeSet.add(new Range(1, 4));
         treeSet.add(new Range(2, 5));
         treeSet.add(new Range(3, 8));
@@ -25,7 +25,7 @@ public class MergeRanges {
         treeSet.add(new Range(160, 1231));
         treeSet.add(new Range(1610, 3231));
         System.out.println(new MergeRanges().mergeRanges(treeSet));
-        System.out.println(new MergeRanges().mergeRanges(new TreeSet()));
+        System.out.println(new MergeRanges().mergeRanges(new TreeSet<>()));
     }
 
     public List<Range> mergeRanges(TreeSet<Range> ranges) {

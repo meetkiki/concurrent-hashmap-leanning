@@ -4,7 +4,7 @@ import com.meetkiki.implement.loader.classes.InterfaceA;
 
 import java.util.ServiceLoader;
 
-public class SpiLoader {
+public class ImplementsSpiLoader {
 
 
     public static void main(String[] args) {
@@ -13,6 +13,7 @@ public class SpiLoader {
         for (InterfaceA impl : serviceLoader) {
             impl.test();
         }
+
     }
 
 }

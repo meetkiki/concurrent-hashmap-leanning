@@ -1,6 +1,5 @@
 package com.meetkiki.conrrent.object;
 
-import io.netty.handler.codec.DecoderException;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.LinkedList;
@@ -18,7 +17,7 @@ public class TestBiasedLocking {
      * -XX:BiasedLockingStartupDelay=0
      * // 延迟偏向时间, 默认不为0，意思为jvm启动多少ms以后开启偏向锁机制（此处设为0，不延迟）
      */
-    public static void main(String[] args) throws DecoderException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException {
         // 首先我们创建一个list，来存放锁对象
         List<TestBiasedLocking> list = new LinkedList<>();
         System.out.println(ClassLayout.parseInstance(TestBiasedLocking.class).toPrintable());
